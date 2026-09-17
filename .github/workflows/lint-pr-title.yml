@@ -1,0 +1,45 @@
+name: "Lint PR title"
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-pr-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+        with:
+          # we omit 'types' input, so the linting will run against defaults from
+          # https://www.conventionalcommits.org
+          # however to not to overload the release-please configuration, we'll pick
+          # the most usable four - feat:, fix:, chore:, docs: which we add to the
+          # subject pattern. Examples of valid commit messages:
+          # feat: some feature
+          # feat(controllers): some specific feature
+          # fix(ci): workflows
+          # fix: general fix
+          # chore: aux
+          # chore(perf): tune
+          # chore(chart): values
+          # docs: readme
+          # docs(design): controller
+          subjectPattern: '^(?![A-Z]).+$'
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            didn't match the configured pattern. Please ensure that the subject
+            starts with a lowercase character.
