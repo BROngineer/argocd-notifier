@@ -21,9 +21,13 @@ run = 'go vet ./...'
 description = "Run go fix against code"
 run = 'go fix ./...'
 
+[tasks.format]
+description = "Built-in format tools"
+depends = ["fmt", "vet", "fix"]
+
 [tasks.lint]
 description = "Run linter and quality checks"
-depends = ["fmt", "vet", "fix"]
+depends = ["format"]
 run = 'golangci-lint run --timeout={{ env.GOLANGCI_LINT_TIMEOUT }}'
 
 [tasks.test]
