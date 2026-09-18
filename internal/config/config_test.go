@@ -35,27 +35,14 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.SessionTTL != 45*time.Minute {
 		t.Errorf("SessionTTL = %v, want 45m", cfg.SessionTTL)
 	}
-	if cfg.DedupTTL != 25*time.Minute {
-		t.Errorf("DedupTTL = %v, want 25m (5x default MaxWait)", cfg.DedupTTL)
+	if cfg.DuplicateAction != "drop" {
+		t.Errorf("DuplicateAction = %q, want drop", cfg.DuplicateAction)
 	}
 	if !cfg.CombineTriggers {
 		t.Error("CombineTriggers = false, want true")
 	}
 	if cfg.LogFormat != "json" {
 		t.Errorf("LogFormat = %q, want json", cfg.LogFormat)
-	}
-}
-
-func TestLoad_DedupTTLOverride(t *testing.T) {
-	setRequiredEnv(t)
-	t.Setenv("DEDUP_TTL", "10m")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.DedupTTL != 10*time.Minute {
-		t.Errorf("DedupTTL = %v, want 10m (explicit override)", cfg.DedupTTL)
 	}
 }
 
@@ -84,12 +71,13 @@ func TestLoad_MissingRequired(t *testing.T) {
 func TestConfig_Validate(t *testing.T) {
 	base := func() Config {
 		return Config{
-			GroupLabel:    "application/name",
-			IdleWindow:    30 * time.Second,
-			MaxWait:       5 * time.Minute,
-			SessionTTL:    45 * time.Minute,
-			SlackBotToken: "xoxb-test",
-			LogFormat:     "json",
+			GroupLabel:      "application/name",
+			IdleWindow:      30 * time.Second,
+			MaxWait:         5 * time.Minute,
+			SessionTTL:      45 * time.Minute,
+			SlackBotToken:   "xoxb-test",
+			LogFormat:       "json",
+			DuplicateAction: "drop",
 		}
 	}
 
@@ -102,6 +90,7 @@ func TestConfig_Validate(t *testing.T) {
 		{name: "idle window too long", mutate: func(c *Config) { c.IdleWindow = c.MaxWait }, wantErr: ErrIdleWindowTooLong},
 		{name: "max wait too long", mutate: func(c *Config) { c.MaxWait = c.SessionTTL }, wantErr: ErrMaxWaitTooLong},
 		{name: "invalid log format", mutate: func(c *Config) { c.LogFormat = "xml" }, wantErr: ErrInvalidLogFormat},
+		{name: "invalid duplicate action", mutate: func(c *Config) { c.DuplicateAction = "explode" }, wantErr: ErrInvalidDuplicateAction},
 	}
 
 	for _, tt := range tests {
