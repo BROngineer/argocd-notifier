@@ -1,0 +1,68 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/brongineer/argocd-notifier
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra env vars (e.g. secretKeyRef/valueFrom), same shape as a Pod's env: list.
+extraEnv: []
+
+server:
+  listenAddr: ":8080"
+  eventsPath: "/events"
+  ingestQueueSize: 1024
+  workerCount: 4
+
+aggregation:
+  groupLabel: "application/name"
+  idleWindow: "30s"
+  maxWait: "5m"
+  combineTriggers: true
+  sessionTTL: "45m"
+  duplicateAction: "drop"
+
+slack:
+  # Either set botToken (rendered into a Secret this chart creates) or
+  # existingSecret (a Secret you manage yourself, e.g. via sealed-secrets
+  # or external-secrets) — exactly one is required.
+  botToken: ""
+  existingSecret: ""
+  existingSecretKey: "SLACK_BOT_TOKEN"
+  requestTimeout: "5s"
+  maxRetries: 3
+
+logging:
+  level: "info"
+  format: "json"
+
+leaderElection:
+  enabled: false
+  # Defaults to the release namespace when empty.
+  namespace: ""
+  leaseName: "argocd-notifier-leader"
+  leaseDuration: "15s"
+  renewDeadline: "10s"
+  retryPeriod: "2s"
