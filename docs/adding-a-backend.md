@@ -52,7 +52,8 @@ Using `internal/slack` as the template:
 
 1. A renderer: `Item` → your wire format. This is where your backend's specific limits and markup live — Slack's is `internal/slack/render.go` (colors per trigger, Block Kit field construction, the 100-attachment chunking cap with a "+N more" marker).
 2. A client: your backend's actual API/transport, implementing `Post` (and `Update`/`PostThreadReply` if applicable) — see `internal/slack/client.go` for retry/backoff conventions (bounded retries on 429/5xx, terminal on other API errors).
-3. Wire it up where `cmd/argocd-notifier/main.go` currently constructs `slack.NewClient(...)` — swap in your backend, or make the choice config-driven if you want one binary supporting several. Each *running instance* still only ever talks to one backend; there's no fan-out to multiple backends from a single process.
+3. A `case` in `cmd/argocd-notifier/main.go`'s `switch cfg.Backend`, alongside `"slack"` — this is the one place that knows which backend names exist, selected via the `BACKEND` env var (`internal/config`'s `Backend` field, default `"slack"`). Each *running instance* still only ever talks to one backend picked at startup; there's no fan-out to multiple backends from a single process.
+4. Any backend-specific required config (e.g. Slack's bot token) belongs in `Config.Validate()` guarded by `if c.Backend == "<yours>"`, the same way `SlackBotToken` is only required `if c.Backend == "slack"` — not an unconditional `envconfig` `required:"true"` tag, which would demand your backend's config even when a *different* backend is selected. The chart (`chart/templates/deployment.yaml`) follows the same pattern for its fail-fast checks and env wiring.
 
 ## Testing
 
