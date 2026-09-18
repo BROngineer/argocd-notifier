@@ -22,6 +22,13 @@ func newTestClient(baseURL string, maxRetries int) *Client {
 	}
 }
 
+func TestNewClient_WithBaseURL(t *testing.T) {
+	c := NewClient("test-token", time.Second, 0, WithBaseURL("https://example.com/api"))
+	if c.baseURL != "https://example.com/api" {
+		t.Fatalf("baseURL = %q, want https://example.com/api", c.baseURL)
+	}
+}
+
 func TestClient_Post_Success(t *testing.T) {
 	var gotAuth, gotPath string
 	var gotBody postMessageRequest
