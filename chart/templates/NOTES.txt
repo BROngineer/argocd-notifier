@@ -1,0 +1,13 @@
+argocd-notifier has been installed.
+
+1. Check status:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. Wire it up to ArgoCD's notifications-engine — see:
+   https://github.com/BROngineer/argocd-notifier/blob/main/docs/setup.md
+{{- if .Values.leaderElection.enabled }}
+
+3. Leader election is enabled. Confirm exactly one pod is ready at a time:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} \
+     -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+{{- end }}
