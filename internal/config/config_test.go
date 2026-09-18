@@ -53,6 +53,12 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.PodName == "" {
 		t.Error("PodName = \"\", want hostname fallback")
 	}
+	if cfg.PprofEnabled {
+		t.Error("PprofEnabled = true, want false")
+	}
+	if cfg.PprofAddr != ":6060" {
+		t.Errorf("PprofAddr = %q, want :6060", cfg.PprofAddr)
+	}
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -132,6 +138,23 @@ func TestConfig_Validate(t *testing.T) {
 				c.LeaderElectionEnabled = true
 				c.LeaderElectionNamespace = "argocd"
 				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
+			},
+			wantErr: nil,
+		},
+		{
+			name: "pprof addr conflicts with listen addr",
+			mutate: func(c *Config) {
+				c.PprofEnabled = true
+				c.PprofAddr = c.ListenAddr
+			},
+			wantErr: ErrPprofAddrConflict,
+		},
+		{
+			name: "pprof enabled with distinct addr",
+			mutate: func(c *Config) {
+				c.ListenAddr = ":8080"
+				c.PprofEnabled = true
+				c.PprofAddr = ":6060"
 			},
 			wantErr: nil,
 		},
