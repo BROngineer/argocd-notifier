@@ -6,57 +6,26 @@ There are three pieces: deploy argocd-notifier, add it as a webhook notification
 
 ## 1. Deploy argocd-notifier
 
-No official Helm chart/manifest exists yet — a minimal example:
+Using the chart at [`chart/`](../chart):
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: argocd-notifier
-  namespace: argocd
-type: Opaque
-stringData:
-  SLACK_BOT_TOKEN: xoxb-your-bot-token
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-notifier
-  namespace: argocd
-spec:
-  replicas: 1
-  selector:
-    matchLabels: {app: argocd-notifier}
-  template:
-    metadata:
-      labels: {app: argocd-notifier}
-    spec:
-      containers:
-        - name: argocd-notifier
-          image: ghcr.io/brongineer/argocd-notifier:latest # replace with your built image
-          ports:
-            - containerPort: 8080
-          envFrom:
-            - secretRef: {name: argocd-notifier}
-          env:
-            - name: GROUP_LABEL
-              value: application/name # must match a real label on your Applications — see step 3
-          readinessProbe:
-            httpGet: {path: /readyz, port: 8080}
-          livenessProbe:
-            httpGet: {path: /healthz, port: 8080}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: argocd-notifier
-  namespace: argocd
-spec:
-  selector: {app: argocd-notifier}
-  ports:
-    - port: 8080
-      targetPort: 8080
+```sh
+helm install argocd-notifier ./chart \
+  --namespace argocd \
+  --set slack.botToken=xoxb-your-bot-token \
+  --set aggregation.groupLabel=application/name  # must match a real label on your Applications — see step 3
 ```
+
+For production, prefer an existing Secret you manage yourself (e.g. via sealed-secrets or external-secrets) over `slack.botToken`:
+
+```sh
+helm install argocd-notifier ./chart \
+  --namespace argocd \
+  --set slack.existingSecret=my-slack-secret \
+  --set slack.existingSecretKey=SLACK_BOT_TOKEN \
+  --set aggregation.groupLabel=application/name
+```
+
+See [`chart/values.yaml`](../chart/values.yaml) for every setting (mirrors [`.env.example`](../.env.example)). Multi-replica setups need `--set leaderElection.enabled=true` — the chart renders the RBAC `Role`/`RoleBinding` this requires automatically.
 
 The Slack bot token needs the `chat:write` scope, and the bot must be invited to every channel you intend to notify (`/invite @your-bot` in Slack) or `chat.postMessage`/`chat.update` will fail with `not_in_channel`.
 

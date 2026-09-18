@@ -17,7 +17,7 @@ argocd-notifier sits between ArgoCD's notifications-engine and Slack: it receive
 - **The aggregator posts to Slack directly** with its own bot token (`chat.postMessage` / `chat.update`) — ArgoCD talks to it via a `service.webhook.<name>` notifier, not the other way around. The existing per-app `slack.channels` config is reused verbatim: swapping the subscribe-annotation suffix from `.slack` to the aggregator's service name carries the same channel list through as `.recipient`, so there's no new per-app config surface upstream.
 - **Deferred, not in v1**: fan-out-count awareness (e.g. showing "3/20 clusters" instead of "3 clusters"), and any new ArgoCD-side "in-progress" trigger. v1 works with whatever triggers already exist upstream (e.g. `on-deployed`, `on-sync-failed`, `on-health-degraded`).
 - **In-memory state, single replica**: no Redis, no persistence of session→message-timestamp mappings across restarts. If the aggregator pod restarts mid-rollout, the next event for that revision can't find the prior message and posts a new one instead of editing it — accepted as a rare-case tradeoff rather than engineered around, since restarts should be infrequent and root causes (e.g. OOMs) should be fixed rather than masked by dedup machinery.
-- **Scope**: single Slack backend, no plugin architecture for other chat backends, no Helm chart authoring yet — kept minimal for v1, with narrow internal interfaces (`Publisher`, storage access) left as the seams for later extension rather than building them now.
+- **Scope**: single Slack backend, no plugin architecture for other chat backends — kept minimal for v1, with narrow internal interfaces (`Publisher`, storage access) left as the seams for later extension rather than building them now.
 
 ## Flow
 
@@ -95,4 +95,4 @@ roleRef:
 
 ## Status
 
-Core service implemented: HTTP receiver, debounce engine, session store with duplicate handling, Slack rendering/client, leader election for multi-replica failover, wired up in `cmd/argocd-notifier`, covered by unit and end-to-end integration tests.
+Core service implemented: HTTP receiver, debounce engine, session store with duplicate handling, Slack rendering/client, leader election for multi-replica failover, wired up in `cmd/argocd-notifier`, covered by unit and end-to-end integration tests. Deployable via the Helm chart at [`chart/`](chart) — see [docs/setup.md](docs/setup.md).
