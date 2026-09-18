@@ -6,20 +6,20 @@
 ### Features
 
 * add Dockerfile and buildx mise tasks ([#13](https://github.com/BROngineer/argocd-notifier/issues/13)) ([fa82737](https://github.com/BROngineer/argocd-notifier/commit/fa82737fde562a6b53b70ee8c226e13e60b966a6))
-* aggregator ([#3](https://github.com/BROngineer/argocd-notifier/issues/3)) ([df2b20a](https://github.com/BROngineer/argocd-notifier/commit/df2b20ab957de950bae0ffe910bc4445162329b0))
-* executable ([#8](https://github.com/BROngineer/argocd-notifier/issues/8)) ([98cab03](https://github.com/BROngineer/argocd-notifier/commit/98cab0366ded4345f2aeae291ec5d515680a7e85))
+* aggregator: debounce engine that batches events per group ([df2b20a](https://github.com/BROngineer/argocd-notifier/commit/df2b20ab957de950bae0ffe910bc4445162329b0))
+* executable: wire all parts together and run the routines ([98cab03](https://github.com/BROngineer/argocd-notifier/commit/98cab0366ded4345f2aeae291ec5d515680a7e85))
 * helm chart ([#11](https://github.com/BROngineer/argocd-notifier/issues/11)) ([3d8a337](https://github.com/BROngineer/argocd-notifier/commit/3d8a337c1e88c42767d08809a273ee7625f9ce1b))
-* leader election ([#9](https://github.com/BROngineer/argocd-notifier/issues/9)) ([63060b0](https://github.com/BROngineer/argocd-notifier/commit/63060b097bc46647ca2336e9aa0b94508ebb0d1a))
-* pprof ([#12](https://github.com/BROngineer/argocd-notifier/issues/12)) ([7059877](https://github.com/BROngineer/argocd-notifier/commit/7059877e31f3e4c7f5d7e5cf98132df9a93cf6db))
-* receiver ([#7](https://github.com/BROngineer/argocd-notifier/issues/7)) ([3433d82](https://github.com/BROngineer/argocd-notifier/commit/3433d825b38cd7fe167e2c197c73a19b3ab6cf04))
-* render slack ([#6](https://github.com/BROngineer/argocd-notifier/issues/6)) ([981ca54](https://github.com/BROngineer/argocd-notifier/commit/981ca54f7a7455dcf9ab41a29ae99ad68960d920))
-* session ([#5](https://github.com/BROngineer/argocd-notifier/issues/5)) ([eedaf06](https://github.com/BROngineer/argocd-notifier/commit/eedaf06973fd1eb4271bca3600b437aaa8266b04))
+* leader election: "failover-speed-plus-no-split-brain only, not state durability" HA ([63060b0](https://github.com/BROngineer/argocd-notifier/commit/63060b097bc46647ca2336e9aa0b94508ebb0d1a))
+* pprof: add separate mux for /pprof endpoints ([7059877](https://github.com/BROngineer/argocd-notifier/commit/7059877e31f3e4c7f5d7e5cf98132df9a93cf6db))
+* receiver: HTTP handler that decodes/validates/enqueues an event and acks fast (HTTP/202), plus the worker pool draining the queue ([3433d82](https://github.com/BROngineer/argocd-notifier/commit/3433d825b38cd7fe167e2c197c73a19b3ab6cf04))
+* render slack: builds a Slack message (Block Kit attachments) from a session's current per-app state ([981ca54](https://github.com/BROngineer/argocd-notifier/commit/981ca54f7a7455dcf9ab41a29ae99ad68960d920))
+* session store that turns batches into Slack posts/updates ([eedaf06](https://github.com/BROngineer/argocd-notifier/commit/eedaf06973fd1eb4271bca3600b437aaa8266b04))
 
 
 ### Miscellaneous
 
 * add CODEOWNERS ([f315ba6](https://github.com/BROngineer/argocd-notifier/commit/f315ba6acd2b3c808df280858410f1369ebb13eb))
-* docs ([#10](https://github.com/BROngineer/argocd-notifier/issues/10)) ([d0f5da0](https://github.com/BROngineer/argocd-notifier/commit/d0f5da0f48de9e370e2949d76bf24a253df53f3b))
+* add design and setup docs ([d0f5da0](https://github.com/BROngineer/argocd-notifier/commit/d0f5da0f48de9e370e2949d76bf24a253df53f3b))
 * update README ([38d44f3](https://github.com/BROngineer/argocd-notifier/commit/38d44f34efc14bff6cc71536d1973ce01c7248bd))
 
 ## 0.1.0 (2026-09-17)
