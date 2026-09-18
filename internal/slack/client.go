@@ -8,10 +8,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/BROngineer/argocd-notifier/internal/render"
+	"github.com/BROngineer/argocd-notifier/internal/notification"
 )
 
 const defaultBaseURL = "https://slack.com/api"
+
+var (
+	_ notification.Backend       = (*Client)(nil)
+	_ notification.Updater       = (*Client)(nil)
+	_ notification.ThreadReplier = (*Client)(nil)
+)
 
 type Client struct {
 	httpClient *http.Client
@@ -42,17 +48,17 @@ func NewClient(token string, timeout time.Duration, maxRetries int, opts ...Opti
 }
 
 type postMessageRequest struct {
-	Channel     string              `json:"channel"`
-	ThreadTS    string              `json:"thread_ts,omitempty"`
-	Text        string              `json:"text"`
-	Attachments []render.Attachment `json:"attachments,omitempty"`
+	Channel     string       `json:"channel"`
+	ThreadTS    string       `json:"thread_ts,omitempty"`
+	Text        string       `json:"text"`
+	Attachments []attachment `json:"attachments,omitempty"`
 }
 
 type updateMessageRequest struct {
-	Channel     string              `json:"channel"`
-	TS          string              `json:"ts"`
-	Text        string              `json:"text"`
-	Attachments []render.Attachment `json:"attachments,omitempty"`
+	Channel     string       `json:"channel"`
+	TS          string       `json:"ts"`
+	Text        string       `json:"text"`
+	Attachments []attachment `json:"attachments,omitempty"`
 }
 
 type apiResponse struct {
@@ -61,17 +67,22 @@ type apiResponse struct {
 	TS    string `json:"ts"`
 }
 
-func (c *Client) Post(ctx context.Context, channel string, msg render.Message) (string, error) {
-	return c.call(ctx, "chat.postMessage", postMessageRequest{Channel: channel, Text: msg.Text, Attachments: msg.Attachments})
+// Post, Update, and PostThreadReply implement notification.Backend,
+// notification.Updater, and notification.ThreadReplier respectively.
+
+func (c *Client) Post(ctx context.Context, recipient string, n notification.Notification) (string, error) {
+	text, attachments := renderNotification(n)
+	return c.call(ctx, "chat.postMessage", postMessageRequest{Channel: recipient, Text: text, Attachments: attachments})
 }
 
-func (c *Client) Update(ctx context.Context, channel, ts string, msg render.Message) error {
-	_, err := c.call(ctx, "chat.update", updateMessageRequest{Channel: channel, TS: ts, Text: msg.Text, Attachments: msg.Attachments})
+func (c *Client) Update(ctx context.Context, recipient, ref string, n notification.Notification) error {
+	text, attachments := renderNotification(n)
+	_, err := c.call(ctx, "chat.update", updateMessageRequest{Channel: recipient, TS: ref, Text: text, Attachments: attachments})
 	return err
 }
 
-func (c *Client) PostThreadReply(ctx context.Context, channel, threadTS, text string) error {
-	_, err := c.call(ctx, "chat.postMessage", postMessageRequest{Channel: channel, ThreadTS: threadTS, Text: text})
+func (c *Client) PostThreadReply(ctx context.Context, recipient, ref, text string) error {
+	_, err := c.call(ctx, "chat.postMessage", postMessageRequest{Channel: recipient, ThreadTS: ref, Text: text})
 	return err
 }
 

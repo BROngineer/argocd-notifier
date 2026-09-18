@@ -16,7 +16,6 @@ import (
 
 	"github.com/BROngineer/argocd-notifier/internal/aggregator"
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
-	"github.com/BROngineer/argocd-notifier/internal/render"
 	"github.com/BROngineer/argocd-notifier/internal/slack"
 )
 
@@ -79,12 +78,14 @@ func waitForCallCount(t *testing.T, getCalls func() []slackCall, want int) []sla
 func newPipeline(t *testing.T, slackBaseURL string) (receiverURL string) {
 	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL))
 
-	publisher := aggregator.NewSessionPublisher(
+	publisher, err := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{SessionTTL: time.Hour, DuplicateAction: aggregator.DuplicateActionDrop},
-		aggregator.MessageBuilderFunc(render.BuildMessage),
 		slackClient,
 		testLogger(),
 	)
+	if err != nil {
+		t.Fatalf("NewSessionPublisher() error = %v", err)
+	}
 
 	engine := aggregator.NewEngine(
 		aggregator.Config{IdleWindow: 50 * time.Millisecond, MaxWait: time.Second, CombineTriggers: true},

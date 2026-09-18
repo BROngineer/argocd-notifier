@@ -20,7 +20,6 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/leader"
 	"github.com/BROngineer/argocd-notifier/internal/logging"
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
-	"github.com/BROngineer/argocd-notifier/internal/render"
 	"github.com/BROngineer/argocd-notifier/internal/slack"
 )
 
@@ -35,15 +34,18 @@ func main() {
 
 	slackClient := slack.NewClient(cfg.SlackBotToken, cfg.SlackRequestTimeout, cfg.SlackMaxRetries)
 
-	publisher := aggregator.NewSessionPublisher(
+	publisher, err := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{
 			SessionTTL:      cfg.SessionTTL,
 			DuplicateAction: aggregator.DuplicateAction(cfg.DuplicateAction),
 		},
-		aggregator.MessageBuilderFunc(render.BuildMessage),
 		slackClient,
 		logger,
 	)
+	if err != nil {
+		logger.Error("failed to build session publisher", "error", err)
+		os.Exit(1)
+	}
 
 	engine := aggregator.NewEngine(
 		aggregator.Config{
