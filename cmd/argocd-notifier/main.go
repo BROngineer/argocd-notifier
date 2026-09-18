@@ -19,8 +19,8 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/httpx"
 	"github.com/BROngineer/argocd-notifier/internal/leader"
 	"github.com/BROngineer/argocd-notifier/internal/logging"
+	"github.com/BROngineer/argocd-notifier/internal/notification"
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
-	"github.com/BROngineer/argocd-notifier/internal/render"
 	"github.com/BROngineer/argocd-notifier/internal/slack"
 )
 
@@ -33,17 +33,29 @@ func main() {
 
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat)
 
-	slackClient := slack.NewClient(cfg.SlackBotToken, cfg.SlackRequestTimeout, cfg.SlackMaxRetries)
+	var notificationBackend notification.Backend
 
-	publisher := aggregator.NewSessionPublisher(
+	// Add case-branch here to wire new backend
+	switch cfg.Backend {
+	case "slack":
+		notificationBackend = slack.NewClient(cfg.SlackBotToken, cfg.SlackRequestTimeout, cfg.SlackMaxRetries)
+	default:
+		logger.Error("failed to setup notification backend", "backend", cfg.Backend, "error", config.ErrBackendNotSupported)
+		os.Exit(1)
+	}
+
+	publisher, err := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{
 			SessionTTL:      cfg.SessionTTL,
 			DuplicateAction: aggregator.DuplicateAction(cfg.DuplicateAction),
 		},
-		aggregator.MessageBuilderFunc(render.BuildMessage),
-		slackClient,
+		notificationBackend,
 		logger,
 	)
+	if err != nil {
+		logger.Error("failed to build session publisher", "error", err)
+		os.Exit(1)
+	}
 
 	engine := aggregator.NewEngine(
 		aggregator.Config{

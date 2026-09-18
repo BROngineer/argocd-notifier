@@ -30,6 +30,10 @@ affinity: {}
 # Extra env vars (e.g. secretKeyRef/valueFrom), same shape as a Pod's env: list.
 extraEnv: []
 
+# Which notification backend to wire up — see docs/adding-a-backend.md.
+# "slack" is the only one implemented today.
+backend: "slack"
+
 server:
   listenAddr: ":8080"
   eventsPath: "/events"

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/BROngineer/argocd-notifier/internal/render"
+	"github.com/BROngineer/argocd-notifier/internal/notification"
 )
 
 func newTestClient(baseURL string, maxRetries int) *Client {
@@ -41,7 +41,7 @@ func TestClient_Post_Success(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(server.URL, 0)
-	ts, err := c.Post(context.Background(), "chan1", render.Message{Text: "hi"})
+	ts, err := c.Post(context.Background(), "chan1", notification.Notification{Summary: "hi"})
 	if err != nil {
 		t.Fatalf("Post() error = %v", err)
 	}
@@ -70,7 +70,7 @@ func TestClient_Update_Success(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(server.URL, 0)
-	if err := c.Update(context.Background(), "chan1", "111.222", render.Message{Text: "updated"}); err != nil {
+	if err := c.Update(context.Background(), "chan1", "111.222", notification.Notification{Summary: "updated"}); err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
 	if gotPath != "/chat.update" {
@@ -111,7 +111,7 @@ func TestClient_RetriesOnServerErrorThenSucceeds(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(server.URL, 3)
-	ts, err := c.Post(context.Background(), "chan1", render.Message{Text: "hi"})
+	ts, err := c.Post(context.Background(), "chan1", notification.Notification{Summary: "hi"})
 	if err != nil {
 		t.Fatalf("Post() error = %v", err)
 	}
@@ -132,7 +132,7 @@ func TestClient_TerminalAPIErrorNoRetry(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(server.URL, 3)
-	_, err := c.Post(context.Background(), "chan1", render.Message{Text: "hi"})
+	_, err := c.Post(context.Background(), "chan1", notification.Notification{Summary: "hi"})
 	if err == nil || !strings.Contains(err.Error(), "channel_not_found") {
 		t.Fatalf("err = %v, want channel_not_found", err)
 	}
@@ -151,7 +151,7 @@ func TestClient_ExhaustsRetries(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(server.URL, 2)
-	_, err := c.Post(context.Background(), "chan1", render.Message{Text: "hi"})
+	_, err := c.Post(context.Background(), "chan1", notification.Notification{Summary: "hi"})
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
 	}

@@ -20,6 +20,9 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
+	if cfg.Backend != "slack" {
+		t.Errorf("Backend = %q, want slack", cfg.Backend)
+	}
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want :8080", cfg.ListenAddr)
 	}
@@ -86,6 +89,7 @@ func TestLoad_MissingRequired(t *testing.T) {
 func TestConfig_Validate(t *testing.T) {
 	base := func() Config {
 		return Config{
+			Backend:         "slack",
 			GroupLabel:      "application/name",
 			IdleWindow:      30 * time.Second,
 			MaxWait:         5 * time.Minute,
@@ -155,6 +159,19 @@ func TestConfig_Validate(t *testing.T) {
 				c.ListenAddr = ":8080"
 				c.PprofEnabled = true
 				c.PprofAddr = ":6060"
+			},
+			wantErr: nil,
+		},
+		{
+			name:    "missing slack bot token when backend is slack",
+			mutate:  func(c *Config) { c.SlackBotToken = "" },
+			wantErr: ErrMissingSlackBotToken,
+		},
+		{
+			name: "non-slack backend does not require slack bot token",
+			mutate: func(c *Config) {
+				c.Backend = "other"
+				c.SlackBotToken = ""
 			},
 			wantErr: nil,
 		},
