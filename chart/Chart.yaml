@@ -3,7 +3,4 @@ name: argocd-notifier
 description: Aggregates ArgoCD Application notifications into one live-updating Slack message per rollout.
 type: application
 version: 0.1.0
-appVersion: "0.1.0"
-home: https://github.com/BROngineer/argocd-notifier
-sources:
-  - https://github.com/BROngineer/argocd-notifier
+appVersion: "0.2.0"

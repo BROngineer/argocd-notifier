@@ -1,6 +1,6 @@
 [env]
-IMAGE_NAME = { default = "ghcr.io/brongineer/argocd-notifier" }
-IMAGE_TAG = { default = "v0.1.0" }
+IMAGE_NAME = { default = "argocd-notifier" }
+IMAGE_TAG = { default = "latest" }
 IMAGE_ARCHS = { default = "amd64 arm64" }
 IMAGE_OS = { default = "linux" }
 
