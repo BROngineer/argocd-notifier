@@ -1,0 +1,35 @@
+[env]
+IMAGE_NAME = { default = "ghcr.io/brongineer/argocd-notifier" }
+IMAGE_TAG = { default = "v0.1.0" }
+IMAGE_ARCHS = { default = "amd64 arm64" }
+IMAGE_OS = { default = "linux" }
+
+[tasks."image:local"]
+description = "Build the image for the local platform and load it into docker"
+run = 'docker buildx build --load -t {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }} .'
+
+[tasks."image:push"]
+description = "Build image for every given arch."
+quiet = true
+run = '''
+for arch in {{ env.IMAGE_ARCHS }}; do
+    docker buildx build \
+        --platform={{ env.IMAGE_OS }}/${arch} \
+        --load \
+        -t {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }}-${arch} \
+        --push .
+done
+'''
+
+[tasks."manifest:push"]
+description = "Build common image manifest."
+quiet = true
+depends = ["image:push"]
+run = '''
+sources=""
+for arch in {{ env.IMAGE_ARCHS }}; do
+    sources="${sources} {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }}-${arch}"
+done
+docker buildx imagetools create --tag {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }} \
+    ${sources}
+'''
