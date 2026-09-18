@@ -55,7 +55,7 @@ flowchart TD
 
 ## Configuration
 
-The service is configured entirely via environment variables — see [`.env.example`](.env.example) for the full list (server, aggregation, Slack, logging, leader election).
+The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, Slack, logging, leader election, pprof).
 
 ## High availability
 

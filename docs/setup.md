@@ -25,11 +25,17 @@ helm install argocd-notifier ./chart \
   --set aggregation.groupLabel=application/name
 ```
 
-See [`chart/values.yaml`](../chart/values.yaml) for every setting (mirrors [`.env.example`](../.env.example)). Multi-replica setups need `--set leaderElection.enabled=true` — the chart renders the RBAC `Role`/`RoleBinding` this requires automatically.
+See [`chart/values.yaml`](../chart/values.yaml) for every setting. Multi-replica setups need `--set leaderElection.enabled=true` — the chart renders the RBAC `Role`/`RoleBinding` this requires automatically; see [design.md#high-availability](design.md#high-availability) before doing that (skip it for a single replica).
 
 The Slack bot token needs the `chat:write` scope, and the bot must be invited to every channel you intend to notify (`/invite @your-bot` in Slack) or `chat.postMessage`/`chat.update` will fail with `not_in_channel`.
 
-See [`.env.example`](../.env.example) for the full list of environment variables. Running more than 1 replica requires leader election — see [design.md#high-availability](design.md#high-availability) and the README's RBAC snippet before doing that; skip it for a single replica.
+To profile a running instance, set `--set pprof.enabled=true` (its own container port, deliberately not exposed via the Service), then:
+
+```sh
+kubectl port-forward -n argocd deploy/argocd-notifier 6060:6060
+go tool pprof http://localhost:6060/debug/pprof/heap
+go tool pprof http://localhost:6060/debug/pprof/goroutine
+```
 
 ## 2. Add argocd-notifier as a webhook service in ArgoCD
 
