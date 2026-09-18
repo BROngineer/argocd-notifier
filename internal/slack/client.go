@@ -20,13 +20,25 @@ type Client struct {
 	maxRetries int
 }
 
-func NewClient(token string, timeout time.Duration, maxRetries int) *Client {
-	return &Client{
+type Option func(*Client)
+
+// WithBaseURL overrides the default https://slack.com/api — needed for
+// Slack Enterprise Grid / GovSlack deployments on a different domain.
+func WithBaseURL(baseURL string) Option {
+	return func(c *Client) { c.baseURL = baseURL }
+}
+
+func NewClient(token string, timeout time.Duration, maxRetries int, opts ...Option) *Client {
+	c := &Client{
 		httpClient: &http.Client{Timeout: timeout},
 		token:      token,
 		baseURL:    defaultBaseURL,
 		maxRetries: maxRetries,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 type postMessageRequest struct {

@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	ErrIdleWindowTooLong = errors.New("IdleWindowTooLong")
-	ErrMaxWaitTooLong    = errors.New("MaxWaitTooLong")
-	ErrInvalidLogFormat  = errors.New("InvalidLogFormat")
+	ErrIdleWindowTooLong      = errors.New("IdleWindowTooLong")
+	ErrMaxWaitTooLong         = errors.New("MaxWaitTooLong")
+	ErrInvalidLogFormat       = errors.New("InvalidLogFormat")
+	ErrInvalidDuplicateAction = errors.New("InvalidDuplicateAction")
 )
 
 type Config struct {
@@ -25,7 +26,7 @@ type Config struct {
 	MaxWait         time.Duration `envconfig:"max_wait" default:"5m"`
 	CombineTriggers bool          `envconfig:"combine_triggers" default:"true"`
 	SessionTTL      time.Duration `envconfig:"session_ttl" default:"45m"`
-	DedupTTL        time.Duration `envconfig:"dedup_ttl"`
+	DuplicateAction string        `envconfig:"duplicate_action" default:"drop"`
 
 	SlackBotToken       string        `envconfig:"slack_bot_token" required:"true"`
 	SlackRequestTimeout time.Duration `envconfig:"slack_request_timeout" default:"5s"`
@@ -39,10 +40,6 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return nil, err
-	}
-
-	if cfg.DedupTTL == 0 {
-		cfg.DedupTTL = 5 * cfg.MaxWait
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -64,6 +61,11 @@ func (c *Config) Validate() error {
 	case "json", "text":
 	default:
 		errs = append(errs, ErrInvalidLogFormat)
+	}
+	switch strings.ToLower(c.DuplicateAction) {
+	case "drop", "thread":
+	default:
+		errs = append(errs, ErrInvalidDuplicateAction)
 	}
 	return errors.Join(errs...)
 }

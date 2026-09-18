@@ -53,6 +53,10 @@ flowchart TD
     T -->|no| S
 ```
 
+## Configuration
+
+The service is configured entirely via environment variables — see [`.env.example`](.env.example) for the full list (server, aggregation, Slack, logging).
+
 ## Status
 
-Implementation in progress, phased on dedicated branches (not yet merged to `main`).
+Core service implemented: HTTP receiver, debounce engine, session store with duplicate handling, Slack rendering/client, wired up in `cmd/argocd-notifier`, covered by unit and end-to-end integration tests.
