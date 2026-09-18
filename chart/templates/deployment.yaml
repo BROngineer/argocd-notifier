@@ -37,6 +37,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.pprof.enabled }}
+            - name: pprof
+              containerPort: {{ trimPrefix ":" .Values.pprof.addr | int }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: LISTEN_ADDR
               value: {{ .Values.server.listenAddr | quote }}
@@ -88,6 +93,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- end }}
+            - name: PPROF_ENABLED
+              value: {{ .Values.pprof.enabled | quote }}
+            {{- if .Values.pprof.enabled }}
+            - name: PPROF_ADDR
+              value: {{ .Values.pprof.addr | quote }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

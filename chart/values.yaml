@@ -66,3 +66,9 @@ leaderElection:
   leaseDuration: "15s"
   renewDeadline: "10s"
   retryPeriod: "2s"
+
+# net/http/pprof, on its own container port — deliberately not exposed via
+# the Service; reach it with `kubectl port-forward`.
+pprof:
+  enabled: false
+  addr: ":6060"
