@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/BROngineer/argocd-notifier/compare/v0.2.0...v0.2.1) (2026-09-18)
+
+
+### Miscellaneous
+
+* fix versions discrepancy ([ae752a1](https://github.com/BROngineer/argocd-notifier/commit/ae752a1c339673002efc21993afe0578e77eaa9a))
+
 ## [0.2.0](https://github.com/BROngineer/argocd-notifier/compare/v0.1.0...v0.2.0) (2026-09-18)
 
 
