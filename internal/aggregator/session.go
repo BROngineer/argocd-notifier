@@ -111,20 +111,25 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 	st.lastFlush = now
 	sp.mu.Unlock()
 
-	recipients := splitRecipients(events[0].Recipient)
 	var errs []error
 
 	if changed {
-		n, err := sp.build(perAppSnapshot)
-		if err != nil {
-			return fmt.Errorf("build notification: %w", err)
-		}
-
-		// A backend that can't edit a previous message just gets a fresh
-		// Post every flush instead — no ref is ever tracked for it.
+		// Recipient is a per-app (really per-trigger, on the ArgoCD side)
+		// routing decision, not "who to CC on one shared message" — group
+		// by recipient first, so each channel only sees the apps actually
+		// addressed to it, instead of every recipient getting whatever the
+		// first event in the batch happened to be routed to.
 		updater, canUpdate := sp.backend.(notification.Updater)
 		newRefs := make(MessageRefs)
-		for _, recipient := range recipients {
+		for recipient, apps := range groupAppsByRecipient(perAppSnapshot) {
+			n, err := sp.build(apps)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("build notification for %s: %w", recipient, err))
+				continue
+			}
+
+			// A backend that can't edit a previous message just gets a
+			// fresh Post every flush instead — no ref is ever tracked.
 			if canUpdate {
 				if ref, ok := refsSnapshot[recipient]; ok {
 					if err := updater.Update(ctx, recipient, ref, n); err != nil {
@@ -156,7 +161,7 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 		threader, _ := sp.backend.(notification.ThreadReplier) // guaranteed by NewSessionPublisher validation
 		for _, ev := range duplicates {
 			note := fmt.Sprintf("%s reported %s again (unchanged) at %s", ev.AppName, ev.Trigger, now.Format(time.RFC3339))
-			for _, recipient := range recipients {
+			for _, recipient := range splitRecipients(ev.Recipient) {
 				ref, ok := refsSnapshot[recipient]
 				if !ok {
 					continue
@@ -169,6 +174,24 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 	}
 
 	return errors.Join(errs...)
+}
+
+// groupAppsByRecipient fans an app out to every channel its own latest
+// event names (semicolon-joined recipients split independently per app),
+// so a session with mixed routing (different clusters/triggers addressed
+// to different channels) renders a distinct, correctly-scoped notification
+// per recipient instead of one shared view.
+func groupAppsByRecipient(perApp map[string]event.Event) map[string]map[string]event.Event {
+	out := make(map[string]map[string]event.Event)
+	for appName, ev := range perApp {
+		for _, recipient := range splitRecipients(ev.Recipient) {
+			if out[recipient] == nil {
+				out[recipient] = make(map[string]event.Event)
+			}
+			out[recipient][appName] = ev
+		}
+	}
+	return out
 }
 
 func contentHash(ev event.Event) string {

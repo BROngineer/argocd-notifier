@@ -19,7 +19,7 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-const validEventBody = `{"groupKey":"camel","appName":"camel-dev","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`
+const validEventBody = `{"groupKey":"tatooine","appName":"tatooine-dev","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`
 
 func TestHandler_MalformedJSON(t *testing.T) {
 	h := NewHandler(1, testLogger())
@@ -55,8 +55,8 @@ func TestHandler_ValidEvent_AcceptedAndEnqueued(t *testing.T) {
 
 	select {
 	case ev := <-h.Events():
-		if ev.AppName != "camel-dev" {
-			t.Fatalf("appName = %q, want camel-dev", ev.AppName)
+		if ev.AppName != "tatooine-dev" {
+			t.Fatalf("appName = %q, want tatooine-dev", ev.AppName)
 		}
 	default:
 		t.Fatal("expected event to be enqueued")

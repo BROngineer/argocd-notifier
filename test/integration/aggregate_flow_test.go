@@ -122,7 +122,7 @@ func TestAggregationFlow_PostThenUpdateSameTS(t *testing.T) {
 
 	for i := range 3 {
 		postEvent(t, receiverURL, fmt.Sprintf(
-			`{"groupKey":"camel","appName":"app-%d","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`, i))
+			`{"groupKey":"tatooine","appName":"app-%d","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`, i))
 	}
 
 	firstCalls := waitForCallCount(t, getCalls, 1)
@@ -133,7 +133,7 @@ func TestAggregationFlow_PostThenUpdateSameTS(t *testing.T) {
 
 	for i := range 3 {
 		postEvent(t, receiverURL, fmt.Sprintf(
-			`{"groupKey":"camel","appName":"app-%d","trigger":"on-health-degraded","revision":"rev-1","healthStatus":"Degraded","recipient":"chan1"}`, i))
+			`{"groupKey":"tatooine","appName":"app-%d","trigger":"on-health-degraded","revision":"rev-1","healthStatus":"Degraded","recipient":"chan1"}`, i))
 	}
 
 	secondCalls := waitForCallCount(t, getCalls, 2)
@@ -149,8 +149,8 @@ func TestAggregationFlow_DifferentRevisionIndependentPost(t *testing.T) {
 	slackBaseURL, getCalls := startMockSlack(t)
 	receiverURL := newPipeline(t, slackBaseURL)
 
-	postEvent(t, receiverURL, `{"groupKey":"camel","appName":"app-a","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`)
-	postEvent(t, receiverURL, `{"groupKey":"camel","appName":"app-a","trigger":"on-deployed","revision":"rev-2","recipient":"chan1"}`)
+	postEvent(t, receiverURL, `{"groupKey":"tatooine","appName":"app-a","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`)
+	postEvent(t, receiverURL, `{"groupKey":"tatooine","appName":"app-a","trigger":"on-deployed","revision":"rev-2","recipient":"chan1"}`)
 
 	calls := waitForCallCount(t, getCalls, 2)
 	if calls[0].path != "/chat.postMessage" || calls[1].path != "/chat.postMessage" {

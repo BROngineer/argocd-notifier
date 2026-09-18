@@ -7,8 +7,8 @@ import (
 
 func validEvent() Event {
 	return Event{
-		GroupKey:  "camel",
-		AppName:   "camel-dev-eu-central-1",
+		GroupKey:  "tatooine",
+		AppName:   "tatooine-dev-empire",
 		Trigger:   "on-deployed",
 		Revision:  "abc123",
 		Recipient: "test1234asdf",
