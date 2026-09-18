@@ -8,6 +8,12 @@ ArgoCD's notifications-engine fires one message per `Application`. When an Appli
 
 argocd-notifier sits between ArgoCD's notifications-engine and Slack: it receives one webhook call per Application event, groups events sharing a label, and keeps **one live Slack message per rollout**, editing it in place as more events arrive, instead of posting a new message every time.
 
+## Documentation
+
+- [docs/design.md](docs/design.md) — how it works, and why
+- [docs/setup.md](docs/setup.md) — wiring ArgoCD's notifications-engine to argocd-notifier
+- [docs/adding-a-backend.md](docs/adding-a-backend.md) — adding a notification backend beyond Slack
+
 ## Configuration
 
 The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, Slack, logging, leader election, pprof).

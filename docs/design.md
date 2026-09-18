@@ -14,9 +14,9 @@ argocd-notifier sits between ArgoCD's notifications-engine and Slack. It receive
 |---|---|
 | `internal/event` | The wire contract with ArgoCD — the JSON shape a webhook call decodes into, and validation of the fields the rest of the system depends on. |
 | `internal/receiver` | HTTP handler that decodes/validates/enqueues an event and acks fast (`202`), plus the worker pool draining the queue. |
-| `internal/aggregator` | The debounce engine (`Engine`) that batches events per group, and the session store (`SessionPublisher`) that turns batches into Slack posts/updates. |
-| `internal/render` | Builds a Slack message (Block Kit attachments) from a session's current per-app state. |
-| `internal/slack` | Thin Slack Web API client (`chat.postMessage` / `chat.update`) with retry/backoff. |
+| `internal/aggregator` | The debounce engine (`Engine`) that batches events per group, and the session store (`SessionPublisher`) that turns batches into backend posts/updates. |
+| `internal/notification` | Backend-neutral domain model (`Notification`, `Item`) built from a session's per-app state, plus the `Backend`/`Updater`/`ThreadReplier` interfaces every notification backend implements. See [adding-a-backend.md](adding-a-backend.md). |
+| `internal/slack` | The Slack backend: renders a `Notification` into Block Kit and talks to the Slack Web API (`chat.postMessage` / `chat.update`) with retry/backoff. |
 | `internal/leader` | Leader election for safely running more than one replica (see [High Availability](#high-availability)). |
 | `internal/config` | Environment-variable-driven configuration for all of the above. |
 | `cmd/argocd-notifier` | Wires everything together and runs the HTTP server. |
@@ -44,9 +44,11 @@ ArgoCD's webhook delivery is at-least-once, and the payload carries no send-id �
 
 ## Rendering and delivery
 
-`render.BuildMessage` sorts apps by name for deterministic output, builds one Block Kit attachment per app via a per-trigger builder (colors/fields matching each of ArgoCD's built-in triggers — `on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`), and chunks past Slack's 50-attachment limit with a "+N more" marker. An event whose trigger isn't recognized is skipped from the attachment list but still counted in the message's summary line.
+`notification.Build` sorts apps by name for deterministic output and builds one backend-neutral `Item` per app via a per-trigger builder — matching each of ArgoCD's built-in triggers (`on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`). An event whose trigger isn't recognized is skipped from the item list but still counted in the notification's summary line. `Item` carries structured fields (`CommitURL`/`CommitSHA`, `TriggeredBy`, `Images`, a generic `Fields` list) rather than any backend's markup — turning that into an actual message is each backend's own job. The Slack backend renders `Item`s into Block Kit attachments and chunks past Slack's documented 100-attachment limit with a "+N more" marker; a different backend would chunk (or not) according to its own limits.
 
-The aggregator posts to Slack **directly**, with its own bot token — ArgoCD talks to argocd-notifier through a `service.webhook.<name>` notifier, not the other way around (see [setup.md](setup.md) for the ArgoCD-side wiring). The existing per-app Slack channel list is reused verbatim: the subscribe-annotation's recipient value carries straight through as `.recipient` in the webhook body, so there's no new per-app config surface on the ArgoCD side. A session's recipient can be multiple channels (semicolon-joined); each gets its own post/update, tracked by its own message timestamp.
+The aggregator talks to backends **directly** — ArgoCD calls argocd-notifier through a `service.webhook.<name>` notifier, not the other way around (see [setup.md](setup.md) for the ArgoCD-side wiring). The existing per-app Slack channel list is reused verbatim: the subscribe-annotation's recipient value carries straight through as `.recipient` in the webhook body, so there's no new per-app config surface on the ArgoCD side. A session's recipient can be multiple channels (semicolon-joined); each gets its own post/update, tracked by its own backend-specific message reference (`MessageRefs`).
+
+Only `Backend.Post` is required of every backend; `Updater` (edit an existing message) and `ThreadReplier` (reply under one) are optional capabilities checked via type assertion — a backend that can't edit just gets a fresh `Post` every flush instead of an in-place update, and `duplicateAction=thread` is rejected at startup (not silently ignored) if the wired backend doesn't implement `ThreadReplier`. See [adding-a-backend.md](adding-a-backend.md) for how to add one.
 
 ## Flow
 
@@ -70,15 +72,15 @@ flowchart TD
     N2 -->|yes: real change or first sighting| N3["perApp[appName] = event"]
     N2 -->|no: content unchanged| N4{"duplicateAction config"}
     N4 -->|drop, default| N5["no-op"]
-    N4 -->|thread| N6["slack.PostThreadReply(channel, slackRef.Ts, note)\nmain message untouched"]
-    N3 --> O["render.BuildMessage(perApp) -> Slack blocks"]
-    O --> P{"session.slackRef == nil?"}
-    P -->|yes| Q["slack.PostMessage(channel, msg)\nstore returned ts"]
-    P -->|no| R["slack.UpdateMessage(channel, ts, msg)\n(same message edited in place)"]
+    N4 -->|thread| N6["backend.(ThreadReplier).PostThreadReply(recipient, refs[recipient], note)\nmain message untouched"]
+    N3 --> O["notification.Build(perApp) -> Notification{Summary, Items}"]
+    O --> P{"backend implements Updater\nAND refs[recipient] exists?"}
+    P -->|no| Q["backend.Post(recipient, n)\nstore returned ref only if backend implements Updater"]
+    P -->|yes| R["backend.(Updater).Update(recipient, ref, n)\n(same message edited in place)"]
     Q --> S["session.lastFlush = now"]
     R --> S
-    S --> T{"background sweep:\nnow - lastFlush > SessionTTL?"}
-    T -->|yes| U["drop session\n(next event for that revision posts a NEW message)"]
+    S --> T{"next Upsert for this key:\nnow - lastFlush > SessionTTL?"}
+    T -->|yes| U["session replaced with a fresh one\n(next event for that revision posts a NEW message)"]
     T -->|no| S
 ```
 
@@ -96,4 +98,5 @@ This buys **failover speed and no split-brain, not state durability**: exactly o
 
 - **In-memory state, no persistence.** A pod restart mid-rollout loses the session→message mapping; the next event for that revision posts a new message instead of editing the old one. Accepted as a rare-case tradeoff — restarts should be infrequent, and root causes (e.g. OOMs) should be fixed rather than papered over with dedup machinery.
 - **No fan-out-count awareness.** A message can say "3 apps degraded" but not "3 of 20" — ArgoCD's notification payload carries no information about how many other Applications share a label, so that would require a separate watch/informer against the Application CRD. Deferred.
-- **Single Slack backend.** No plugin architecture for other chat systems yet, though the `Publisher`/`MessageBuilder`/`MessagePoster` interfaces are narrow enough that adding one wouldn't require reworking the engine or session store.
+- **Slack is the only backend implemented so far.** The `Backend`/`Updater`/`ThreadReplier` interfaces (`internal/notification`) exist specifically so a second backend doesn't require reworking the engine or session store — see [adding-a-backend.md](adding-a-backend.md). Running multiple backends *simultaneously* from one process (fan-out to Slack + Teams at once) isn't supported; each running instance wires exactly one backend.
+- **100-attachment cap is a hardcoded default, not yet configurable.** Slack doesn't publish an exact byte-size threshold to defend against separately — revisit if/when a single rollout's app count grows enough for it to matter.
