@@ -44,6 +44,15 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.LogFormat != "json" {
 		t.Errorf("LogFormat = %q, want json", cfg.LogFormat)
 	}
+	if cfg.LeaderElectionEnabled {
+		t.Error("LeaderElectionEnabled = true, want false")
+	}
+	if cfg.LeaseName != "argocd-notifier-leader" {
+		t.Errorf("LeaseName = %q, want argocd-notifier-leader", cfg.LeaseName)
+	}
+	if cfg.PodName == "" {
+		t.Error("PodName = \"\", want hostname fallback")
+	}
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -91,6 +100,41 @@ func TestConfig_Validate(t *testing.T) {
 		{name: "max wait too long", mutate: func(c *Config) { c.MaxWait = c.SessionTTL }, wantErr: ErrMaxWaitTooLong},
 		{name: "invalid log format", mutate: func(c *Config) { c.LogFormat = "xml" }, wantErr: ErrInvalidLogFormat},
 		{name: "invalid duplicate action", mutate: func(c *Config) { c.DuplicateAction = "explode" }, wantErr: ErrInvalidDuplicateAction},
+		{
+			name: "leader election missing namespace",
+			mutate: func(c *Config) {
+				c.LeaderElectionEnabled = true
+				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
+			},
+			wantErr: ErrMissingLeaderElectionNamespace,
+		},
+		{
+			name: "leader election lease duration too short",
+			mutate: func(c *Config) {
+				c.LeaderElectionEnabled = true
+				c.LeaderElectionNamespace = "argocd"
+				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 5*time.Second, 10*time.Second, 2*time.Second
+			},
+			wantErr: ErrLeaseDurationTooShort,
+		},
+		{
+			name: "leader election renew deadline too short",
+			mutate: func(c *Config) {
+				c.LeaderElectionEnabled = true
+				c.LeaderElectionNamespace = "argocd"
+				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 2*time.Second, 5*time.Second
+			},
+			wantErr: ErrRenewDeadlineTooShort,
+		},
+		{
+			name: "leader election valid",
+			mutate: func(c *Config) {
+				c.LeaderElectionEnabled = true
+				c.LeaderElectionNamespace = "argocd"
+				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
+			},
+			wantErr: nil,
+		},
 	}
 
 	for _, tt := range tests {
