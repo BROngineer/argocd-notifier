@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"time"
 
@@ -9,10 +10,13 @@ import (
 )
 
 var (
-	ErrIdleWindowTooLong      = errors.New("IdleWindowTooLong")
-	ErrMaxWaitTooLong         = errors.New("MaxWaitTooLong")
-	ErrInvalidLogFormat       = errors.New("InvalidLogFormat")
-	ErrInvalidDuplicateAction = errors.New("InvalidDuplicateAction")
+	ErrIdleWindowTooLong              = errors.New("IdleWindowTooLong")
+	ErrMaxWaitTooLong                 = errors.New("MaxWaitTooLong")
+	ErrInvalidLogFormat               = errors.New("InvalidLogFormat")
+	ErrInvalidDuplicateAction         = errors.New("InvalidDuplicateAction")
+	ErrMissingLeaderElectionNamespace = errors.New("MissingLeaderElectionNamespace")
+	ErrLeaseDurationTooShort          = errors.New("LeaseDurationTooShort")
+	ErrRenewDeadlineTooShort          = errors.New("RenewDeadlineTooShort")
 )
 
 type Config struct {
@@ -34,12 +38,28 @@ type Config struct {
 
 	LogLevel  string `envconfig:"log_level" default:"info"`
 	LogFormat string `envconfig:"log_format" default:"json"`
+
+	LeaderElectionEnabled   bool          `envconfig:"leader_election_enabled" default:"false"`
+	LeaderElectionNamespace string        `envconfig:"leader_election_namespace"`
+	LeaseName               string        `envconfig:"lease_name" default:"argocd-notifier-leader"`
+	LeaseDuration           time.Duration `envconfig:"lease_duration" default:"15s"`
+	RenewDeadline           time.Duration `envconfig:"renew_deadline" default:"10s"`
+	RetryPeriod             time.Duration `envconfig:"retry_period" default:"2s"`
+	// PodName is the leader-election identity; falls back to os.Hostname()
+	// (the pod name, in-cluster) in Load() when unset.
+	PodName string `envconfig:"pod_name"`
 }
 
 func Load() (*Config, error) {
 	var cfg Config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return nil, err
+	}
+
+	if cfg.PodName == "" {
+		if hostname, err := os.Hostname(); err == nil {
+			cfg.PodName = hostname
+		}
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -66,6 +86,17 @@ func (c *Config) Validate() error {
 	case "drop", "thread":
 	default:
 		errs = append(errs, ErrInvalidDuplicateAction)
+	}
+	if c.LeaderElectionEnabled {
+		if c.LeaderElectionNamespace == "" {
+			errs = append(errs, ErrMissingLeaderElectionNamespace)
+		}
+		if c.LeaseDuration <= c.RenewDeadline {
+			errs = append(errs, ErrLeaseDurationTooShort)
+		}
+		if c.RenewDeadline <= c.RetryPeriod {
+			errs = append(errs, ErrRenewDeadlineTooShort)
+		}
 	}
 	return errors.Join(errs...)
 }
