@@ -1,0 +1,11 @@
+.git
+.github
+.mise
+chart
+docs
+test
+*.md
+mise.toml
+.golangci.yml
+.release-please-manifest.json
+release-please-config.json
