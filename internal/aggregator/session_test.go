@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -18,14 +19,22 @@ type buildCounter struct {
 	err   error
 }
 
-func (b *buildCounter) build(_ map[string]event.Event) (notification.Notification, error) {
+// build encodes the sorted app names it was called with into the
+// Notification's Summary, so tests can assert which apps ended up in
+// which recipient's rendered view without a real renderer.
+func (b *buildCounter) build(perApp map[string]event.Event) (notification.Notification, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.calls++
 	if b.err != nil {
 		return notification.Notification{}, b.err
 	}
-	return notification.Notification{Summary: "built"}, nil
+	names := make([]string, 0, len(perApp))
+	for name := range perApp {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return notification.Notification{Summary: strings.Join(names, ",")}, nil
 }
 
 func (b *buildCounter) Calls() int {
@@ -39,6 +48,7 @@ type backendCall struct {
 	recipient string
 	ref       string
 	text      string
+	summary   string
 }
 
 // fakeBackend implements Backend, Updater, and ThreadReplier — the
@@ -51,7 +61,7 @@ type fakeBackend struct {
 	postErr map[string]error
 }
 
-func (b *fakeBackend) Post(_ context.Context, recipient string, _ notification.Notification) (string, error) {
+func (b *fakeBackend) Post(_ context.Context, recipient string, n notification.Notification) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if err, ok := b.postErr[recipient]; ok {
@@ -59,14 +69,14 @@ func (b *fakeBackend) Post(_ context.Context, recipient string, _ notification.N
 	}
 	b.nextRef++
 	ref := fmt.Sprintf("ref-%d", b.nextRef)
-	b.calls = append(b.calls, backendCall{kind: "post", recipient: recipient, ref: ref})
+	b.calls = append(b.calls, backendCall{kind: "post", recipient: recipient, ref: ref, summary: n.Summary})
 	return ref, nil
 }
 
-func (b *fakeBackend) Update(_ context.Context, recipient, ref string, _ notification.Notification) error {
+func (b *fakeBackend) Update(_ context.Context, recipient, ref string, n notification.Notification) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.calls = append(b.calls, backendCall{kind: "update", recipient: recipient, ref: ref})
+	b.calls = append(b.calls, backendCall{kind: "update", recipient: recipient, ref: ref, summary: n.Summary})
 	return nil
 }
 
@@ -131,7 +141,7 @@ func TestSessionPublisher_FirstUpsertPosts(t *testing.T) {
 	backend := &fakeBackend{}
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	if err := sp.Upsert(context.Background(), key, []event.Event{baseEvent()}); err != nil {
 		t.Fatalf("Upsert() error = %v", err)
 	}
@@ -150,7 +160,7 @@ func TestSessionPublisher_RealChangeCallsUpdate(t *testing.T) {
 	backend := &fakeBackend{}
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	first := baseEvent()
 	first.HealthStatus = "Degraded"
 	if err := sp.Upsert(context.Background(), key, []event.Event{first}); err != nil {
@@ -174,7 +184,7 @@ func TestSessionPublisher_DuplicateContent_DropDefault(t *testing.T) {
 	backend := &fakeBackend{}
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour, DuplicateAction: DuplicateActionDrop}, build, backend, newFakeClock())
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	ev := baseEvent()
 	if err := sp.Upsert(context.Background(), key, []event.Event{ev}); err != nil {
 		t.Fatalf("Upsert() error = %v", err)
@@ -197,7 +207,7 @@ func TestSessionPublisher_DuplicateContent_Thread(t *testing.T) {
 	backend := &fakeBackend{}
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour, DuplicateAction: DuplicateActionThread}, build, backend, newFakeClock())
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	ev := baseEvent()
 	if err := sp.Upsert(context.Background(), key, []event.Event{ev}); err != nil {
 		t.Fatalf("Upsert() error = %v", err)
@@ -218,7 +228,7 @@ func TestSessionPublisher_SessionTTLExpiry(t *testing.T) {
 	clock := newFakeClock()
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Minute}, build, backend, clock)
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	ev := baseEvent()
 	if err := sp.Upsert(context.Background(), key, []event.Event{ev}); err != nil {
 		t.Fatalf("Upsert() error = %v", err)
@@ -243,7 +253,7 @@ func TestSessionPublisher_MultiChannelRecipients(t *testing.T) {
 	backend := &fakeBackend{}
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	first := baseEvent()
 	first.Recipient = "chan1;chan2"
 	if err := sp.Upsert(context.Background(), key, []event.Event{first}); err != nil {
@@ -274,12 +284,74 @@ func TestSessionPublisher_MultiChannelRecipients(t *testing.T) {
 	}
 }
 
+// TestSessionPublisher_MixedRecipientsRouteIndependently covers a real
+// setup: one service, dev apps route sync events to one channel, prod apps
+// route sync events to a different channel and health events to a third —
+// all landing in the same flush (e.g. combineTriggers=true). Each channel
+// must only see the apps actually addressed to it.
+func TestSessionPublisher_MixedRecipientsRouteIndependently(t *testing.T) {
+	build := &buildCounter{}
+	backend := &fakeBackend{}
+	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
+
+	dev := baseEvent()
+	dev.AppName = "tatooine-dev-new-republic"
+	dev.Trigger = "on-deployed"
+	dev.Recipient = "feed-deploy-dev"
+
+	prodDeployed := baseEvent()
+	prodDeployed.AppName = "tatooine-prod-new-republic"
+	prodDeployed.Trigger = "on-deployed"
+	prodDeployed.Recipient = "feed-deploy"
+
+	prodDegraded := baseEvent()
+	prodDegraded.AppName = "tatooine-prod-empire"
+	prodDegraded.Trigger = "on-health-degraded"
+	prodDegraded.Recipient = "ops-alerts"
+
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
+	if err := sp.Upsert(context.Background(), key, []event.Event{dev, prodDeployed, prodDegraded}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	calls := backend.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("expected 3 posts (one per distinct recipient), got %+v", calls)
+	}
+
+	byRecipient := make(map[string]backendCall, len(calls))
+	for _, c := range calls {
+		if c.kind != "post" {
+			t.Fatalf("expected all calls to be posts on first flush, got %+v", calls)
+		}
+		byRecipient[c.recipient] = c
+	}
+
+	tests := []struct {
+		recipient string
+		wantApps  string
+	}{
+		{"feed-deploy-dev", "tatooine-dev-new-republic"},
+		{"feed-deploy", "tatooine-prod-new-republic"},
+		{"ops-alerts", "tatooine-prod-empire"},
+	}
+	for _, tt := range tests {
+		c, ok := byRecipient[tt.recipient]
+		if !ok {
+			t.Fatalf("expected a post to %q, got calls %+v", tt.recipient, calls)
+		}
+		if c.summary != tt.wantApps {
+			t.Fatalf("recipient %q got apps %q, want exactly %q", tt.recipient, c.summary, tt.wantApps)
+		}
+	}
+}
+
 func TestSessionPublisher_BackendErrorOnOneChannelDoesNotBlockOthers(t *testing.T) {
 	build := &buildCounter{}
 	backend := &fakeBackend{postErr: map[string]error{"chan1": fmt.Errorf("boom")}}
 	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	ev := baseEvent()
 	ev.Recipient = "chan1;chan2"
 
@@ -302,7 +374,7 @@ func TestSessionPublisher_PostOnlyBackendAlwaysPostsFresh(t *testing.T) {
 		t.Fatalf("newSessionPublisherWithClock() error = %v", err)
 	}
 
-	key := SessionKey{GroupKey: "camel", Revision: "rev-1"}
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	first := baseEvent()
 	first.HealthStatus = "Degraded"
 	if err := sp.Upsert(context.Background(), key, []event.Event{first}); err != nil {

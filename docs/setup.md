@@ -142,10 +142,10 @@ Label every Application you want grouped together with the label named in `GROUP
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: camel-dev-us-east-1
+  name: tatooine-dev-new-republic
   labels:
-    application/name: camel
-    application/target: dev-us-east-1
+    application/name: tatooine
+    application/target: dev-new-republic
   annotations:
     notifications.argoproj.io/subscribe.on-deployed.argocd-notifier: "team-deploys"
     notifications.argoproj.io/subscribe.on-sync-failed.argocd-notifier: "team-deploys;team-oncall"

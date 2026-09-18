@@ -26,7 +26,7 @@ func TestRenderNotification_AllKnownTriggers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.trigger, func(t *testing.T) {
-			item := notification.Item{AppName: "camel-dev", Cluster: "dev-eu-central-1", Trigger: tt.trigger, Link: "https://argocd.example.com/applications/camel-dev"}
+			item := notification.Item{AppName: "tatooine-dev", Cluster: "dev-empire", Trigger: tt.trigger, Link: "https://argocd.example.com/applications/tatooine-dev"}
 			_, attachments := renderNotification(notification.Notification{Summary: "s", Items: []notification.Item{item}})
 			if len(attachments) != 1 {
 				t.Fatalf("expected 1 attachment, got %d", len(attachments))
@@ -39,7 +39,7 @@ func TestRenderNotification_AllKnownTriggers(t *testing.T) {
 }
 
 func TestRenderNotification_DeletedHasNoButton(t *testing.T) {
-	item := notification.Item{AppName: "camel-dev", Trigger: "on-deleted"}
+	item := notification.Item{AppName: "tatooine-dev", Trigger: "on-deleted"}
 	_, attachments := renderNotification(notification.Notification{Summary: "s", Items: []notification.Item{item}})
 	for _, block := range attachments[0].Blocks {
 		if block["type"] == "actions" {
@@ -50,7 +50,7 @@ func TestRenderNotification_DeletedHasNoButton(t *testing.T) {
 
 func TestRenderNotification_SyncFailedIncludesDetailText(t *testing.T) {
 	item := notification.Item{
-		AppName:    "camel-dev",
+		AppName:    "tatooine-dev",
 		Trigger:    "on-sync-failed",
 		Fields:     []notification.Field{{Label: "Phase", Value: "Failed"}},
 		DetailText: strings.Repeat("x", 300) + "...",
@@ -97,8 +97,8 @@ func TestCommitText(t *testing.T) {
 	}{
 		{
 			name: "with url renders hyperlink",
-			item: notification.Item{CommitURL: "https://github.com/timescale/savannah-camel/commit/abcdef12", CommitSHA: "abcdef12"},
-			want: "<https://github.com/timescale/savannah-camel/commit/abcdef12|`abcdef12`>",
+			item: notification.Item{CommitURL: "https://github.com/timescale/savannah-tatooine/commit/abcdef12", CommitSHA: "abcdef12"},
+			want: "<https://github.com/timescale/savannah-tatooine/commit/abcdef12|`abcdef12`>",
 		},
 		{
 			name: "without url renders plain text",

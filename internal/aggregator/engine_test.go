@@ -40,8 +40,8 @@ func testLogger() *slog.Logger {
 
 func baseEvent() event.Event {
 	return event.Event{
-		GroupKey:  "camel",
-		AppName:   "camel-dev-eu-central-1",
+		GroupKey:  "tatooine",
+		AppName:   "tatooine-dev-empire",
 		Trigger:   "on-deployed",
 		Revision:  "rev-1",
 		Recipient: "test1234asdf",
@@ -157,7 +157,7 @@ func TestEngine_StaleTimerFireIsNoOp(t *testing.T) {
 		t.Fatalf("expected 1 call after first flush, got %d", len(pub.Calls()))
 	}
 
-	eng.onTimerFire("camel", 0)
+	eng.onTimerFire("tatooine", 0)
 
 	if len(pub.Calls()) != 1 {
 		t.Fatalf("expected stale timer fire to be a no-op, got %d calls", len(pub.Calls()))

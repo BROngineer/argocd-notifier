@@ -17,12 +17,12 @@ func TestBuild_NoEvents(t *testing.T) {
 
 func baseTestEvent(trigger string) event.Event {
 	return event.Event{
-		GroupKey:  "camel",
-		AppName:   "camel-dev-eu-central-1",
+		GroupKey:  "tatooine",
+		AppName:   "tatooine-dev-empire",
 		Trigger:   trigger,
 		Revision:  "abcdef1234567",
-		RepoURL:   "https://github.com/timescale/savannah-camel.git",
-		Target:    "dev-eu-central-1",
+		RepoURL:   "https://github.com/timescale/savannah-tatooine.git",
+		Target:    "dev-empire",
 		ArgoCDURL: "https://argocd.example.com",
 	}
 }
@@ -40,10 +40,10 @@ func TestBuild_Deployed(t *testing.T) {
 		t.Fatalf("expected 1 item, got %d", len(n.Items))
 	}
 	item := n.Items[0]
-	if item.Cluster != "dev-eu-central-1" {
+	if item.Cluster != "dev-empire" {
 		t.Errorf("Cluster = %q", item.Cluster)
 	}
-	if item.CommitURL != "https://github.com/timescale/savannah-camel/commit/abcdef1234567" {
+	if item.CommitURL != "https://github.com/timescale/savannah-tatooine/commit/abcdef1234567" {
 		t.Errorf("CommitURL = %q", item.CommitURL)
 	}
 	if item.CommitSHA != "abcdef12" {
@@ -55,7 +55,7 @@ func TestBuild_Deployed(t *testing.T) {
 	if len(item.Images) != 1 || item.Images[0] != "repo/img:v1" {
 		t.Errorf("Images = %v", item.Images)
 	}
-	if item.Link != "https://argocd.example.com/applications/camel-dev-eu-central-1" {
+	if item.Link != "https://argocd.example.com/applications/tatooine-dev-empire" {
 		t.Errorf("Link = %q", item.Link)
 	}
 }
@@ -132,9 +132,9 @@ func TestBuild_UnknownTriggerSkippedButCounted(t *testing.T) {
 
 func TestBuild_SortedByAppName(t *testing.T) {
 	perApp := map[string]event.Event{
-		"zebra": {GroupKey: "camel", AppName: "zebra", Trigger: "on-deployed"},
-		"alpha": {GroupKey: "camel", AppName: "alpha", Trigger: "on-deployed"},
-		"mid":   {GroupKey: "camel", AppName: "mid", Trigger: "on-deployed"},
+		"zebra": {GroupKey: "tatooine", AppName: "zebra", Trigger: "on-deployed"},
+		"alpha": {GroupKey: "tatooine", AppName: "alpha", Trigger: "on-deployed"},
+		"mid":   {GroupKey: "tatooine", AppName: "mid", Trigger: "on-deployed"},
 	}
 
 	for range 5 {
@@ -158,9 +158,9 @@ func TestCommitURLAndSHA(t *testing.T) {
 	}{
 		{
 			name:     "trims .git and shortens revision",
-			repoURL:  "https://github.com/timescale/savannah-camel.git",
+			repoURL:  "https://github.com/timescale/savannah-tatooine.git",
 			revision: "abcdef1234567",
-			wantURL:  "https://github.com/timescale/savannah-camel/commit/abcdef1234567",
+			wantURL:  "https://github.com/timescale/savannah-tatooine/commit/abcdef1234567",
 			wantSHA:  "abcdef12",
 		},
 		{name: "empty repo means no url", repoURL: "", revision: "abcdef1234567", wantURL: "", wantSHA: "abcdef12"},
