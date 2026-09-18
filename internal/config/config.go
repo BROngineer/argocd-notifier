@@ -18,9 +18,11 @@ var (
 	ErrLeaseDurationTooShort          = errors.New("LeaseDurationTooShort")
 	ErrRenewDeadlineTooShort          = errors.New("RenewDeadlineTooShort")
 	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
+	ErrBackendNotSupported            = errors.New("BackendNotSupported")
 )
 
 type Config struct {
+	Backend         string `envconfig:"backend" default:"slack"`
 	ListenAddr      string `envconfig:"listen_addr" default:":8080"`
 	EventsPath      string `envconfig:"events_path" default:"/events"`
 	IngestQueueSize int    `envconfig:"ingest_queue_size" default:"1024"`

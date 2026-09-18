@@ -20,6 +20,9 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
+	if cfg.Backend != "slack" {
+		t.Errorf("Backend = %q, want slack", cfg.Backend)
+	}
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want :8080", cfg.ListenAddr)
 	}
