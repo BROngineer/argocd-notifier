@@ -17,6 +17,7 @@ var (
 	ErrMissingLeaderElectionNamespace = errors.New("MissingLeaderElectionNamespace")
 	ErrLeaseDurationTooShort          = errors.New("LeaseDurationTooShort")
 	ErrRenewDeadlineTooShort          = errors.New("RenewDeadlineTooShort")
+	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
 )
 
 type Config struct {
@@ -48,6 +49,12 @@ type Config struct {
 	// PodName is the leader-election identity; falls back to os.Hostname()
 	// (the pod name, in-cluster) in Load() when unset.
 	PodName string `envconfig:"pod_name"`
+
+	// PprofEnabled serves net/http/pprof on its own listener, separate from
+	// the main server — never put behind the k8s Service ArgoCD's webhook
+	// and readiness checks route through.
+	PprofEnabled bool   `envconfig:"pprof_enabled" default:"false"`
+	PprofAddr    string `envconfig:"pprof_addr" default:":6060"`
 }
 
 func Load() (*Config, error) {
@@ -97,6 +104,9 @@ func (c *Config) Validate() error {
 		if c.RenewDeadline <= c.RetryPeriod {
 			errs = append(errs, ErrRenewDeadlineTooShort)
 		}
+	}
+	if c.PprofEnabled && c.PprofAddr == c.ListenAddr {
+		errs = append(errs, ErrPprofAddrConflict)
 	}
 	return errors.Join(errs...)
 }

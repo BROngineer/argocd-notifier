@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -84,6 +85,11 @@ func main() {
 		}
 	}()
 
+	var pprofSrv *http.Server
+	if cfg.PprofEnabled {
+		pprofSrv = startPprof(cfg.PprofAddr, logger)
+	}
+
 	<-ctx.Done()
 	logger.Info("shutting down")
 
@@ -92,6 +98,36 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
 	}
+	if pprofSrv != nil {
+		if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("pprof graceful shutdown failed", "error", err)
+		}
+	}
+}
+
+// startPprof serves pprof handlers on their own mux and listener, separate
+// from the main server and from http.DefaultServeMux — it must never be
+// reachable through whatever k8s Service routes ArgoCD's webhook traffic in.
+func startPprof(addr string, logger *slog.Logger) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		logger.Info("starting pprof server", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("pprof server error", "error", err)
+		}
+	}()
+	return srv
 }
 
 // startLeaderElection runs the elector in the background and returns its

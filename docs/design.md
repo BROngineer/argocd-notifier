@@ -88,6 +88,10 @@ Running more than one replica requires leader election (`LEADER_ELECTION_ENABLED
 
 This buys **failover speed and no split-brain, not state durability**: exactly one replica is ever active (`internal/leader.Elector` campaigns for a `coordination.k8s.io/v1` `Lease`), and only the current leader's `/readyz` reports ready, so the Service's endpoint list — and therefore all traffic — follows the leader automatically. But the new leader still starts with empty in-memory session state, same as a plain restart; making session state (and in-flight Slack message `ts` references) survive a leader change would need externalized state (e.g. Redis), which is deliberately out of scope. See [README.md](../README.md#high-availability) for the required RBAC.
 
+## Debugging
+
+`net/http/pprof` is served on its own listener (`PPROF_ADDR`, default `:6060`) when `PPROF_ENABLED=true`, registered on a dedicated mux rather than `http.DefaultServeMux` — kept deliberately separate from the main server so it's never reachable through whatever routes ArgoCD's webhook traffic or readiness checks in. See [setup.md](setup.md) for `port-forward`/`go tool pprof` usage.
+
 ## Known limitations (accepted, not accidental)
 
 - **In-memory state, no persistence.** A pod restart mid-rollout loses the session→message mapping; the next event for that revision posts a new message instead of editing the old one. Accepted as a rare-case tradeoff — restarts should be infrequent, and root causes (e.g. OOMs) should be fixed rather than papered over with dedup machinery.
