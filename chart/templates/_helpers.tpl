@@ -19,6 +19,14 @@
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "argocd-notifier.imageTag" -}}
+{{- if .Values.image.tag -}}
+{{- .Values.image.tag -}}
+{{- else -}}
+v{{ .Chart.AppVersion }}
+{{- end -}}
+{{- end -}}
+
 {{- define "argocd-notifier.labels" -}}
 helm.sh/chart: {{ include "argocd-notifier.chart" . }}
 {{ include "argocd-notifier.selectorLabels" . }}
