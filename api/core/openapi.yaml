@@ -1,0 +1,53 @@
+openapi: 3.0.3
+info:
+  title: argocd-notifier core API
+  description: >-
+    Served by argocd-notifier's core process. Currently covers backend
+    registration; the existing hand-rolled /events, /healthz, and /readyz
+    endpoints are expected to move into this spec in a later phase, once
+    the core's HTTP server is refactored to be fully generated-server-driven.
+  version: "1.0.0"
+
+paths:
+  /v1/backends/register:
+    post:
+      operationId: registerBackend
+      summary: >-
+        Register a remote notification backend, or refresh its heartbeat —
+        calling this again with the same name refreshes it; there is no
+        separate heartbeat endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBackendRequest"
+      responses:
+        "204":
+          description: Registered (or heartbeat refreshed).
+        "400":
+          description: Malformed request.
+
+components:
+  schemas:
+    RegisterBackendRequest:
+      type: object
+      required: [name, baseURL, supportsThreadReply]
+      properties:
+        name:
+          type: string
+          description: >-
+            The backend name events route to (matches the `backend` field
+            argocd-notifier extracts from incoming ArgoCD events).
+        baseURL:
+          type: string
+          description: >-
+            Base address the core calls back on. The core appends the fixed
+            suffixes /notify and /thread-reply itself — do not include them
+            here, and do not include a trailing slash.
+        supportsThreadReply:
+          type: boolean
+          description: >-
+            Whether this backend serves POST {baseURL}/thread-reply. If
+            false, the core will not attempt duplicateAction=thread against
+            this backend.
