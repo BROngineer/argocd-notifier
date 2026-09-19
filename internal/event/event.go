@@ -8,6 +8,7 @@ var (
 	ErrMissingTrigger   = errors.New("MissingTrigger")
 	ErrMissingRevision  = errors.New("MissingRevision")
 	ErrMissingRecipient = errors.New("MissingRecipient")
+	ErrMissingBackend   = errors.New("MissingBackend")
 )
 
 // Event mirrors the JSON body ArgoCD's notifications-engine webhook service
@@ -21,6 +22,7 @@ type Event struct {
 	Trigger      string            `json:"trigger"`
 	Revision     string            `json:"revision"`
 	Recipient    string            `json:"recipient"`
+	Backend      string            `json:"backend"`
 	Labels       map[string]string `json:"labels,omitempty"`
 	Target       string            `json:"target,omitempty"`
 	HealthStatus string            `json:"healthStatus,omitempty"`
@@ -49,6 +51,9 @@ func (e Event) Validate() error {
 	}
 	if e.Recipient == "" {
 		errs = append(errs, ErrMissingRecipient)
+	}
+	if e.Backend == "" {
+		errs = append(errs, ErrMissingBackend)
 	}
 	return errors.Join(errs...)
 }
