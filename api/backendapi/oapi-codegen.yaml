@@ -1,0 +1,7 @@
+package: backendapi
+generate:
+  models: true
+  std-http-server: true
+  client: true
+  embedded-spec: true
+output: backendapi.gen.go

@@ -1,0 +1,143 @@
+openapi: 3.0.3
+info:
+  title: argocd-notifier backend API
+  description: >-
+    Served by a remote notification backend, at whatever baseURL it
+    registered with argocd-notifier's core (see api/core/openapi.yaml).
+    The core calls these endpoints; the backend never calls the core except
+    to register/heartbeat. See docs/adding-a-backend.md.
+  version: "1.0.0"
+
+paths:
+  /notify:
+    post:
+      operationId: notify
+      summary: >-
+        Deliver a notification. An empty ref means post a new message; a
+        non-empty ref means the backend should try to edit that message in
+        place if it can — the backend decides how to handle it and returns
+        whatever ref represents the result, which the core stores and
+        passes back on the next call for the same session/recipient.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifyRequest"
+      responses:
+        "200":
+          description: Delivered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifyResult"
+        "400":
+          description: Malformed request.
+        "5XX":
+          description: Delivery failed; the core treats this like any other transient failure.
+
+  /thread-reply:
+    post:
+      operationId: threadReply
+      summary: >-
+        Post a short reply under an existing message. Only called against
+        backends that declared supportsThreadReply: true at registration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadReplyRequest"
+      responses:
+        "204":
+          description: Reply posted.
+        "400":
+          description: Malformed request.
+        "5XX":
+          description: Delivery failed; the core treats this like any other transient failure.
+
+components:
+  schemas:
+    Field:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+
+    Item:
+      type: object
+      required: [appName, cluster, trigger]
+      properties:
+        appName:
+          type: string
+        cluster:
+          type: string
+        trigger:
+          type: string
+        commitURL:
+          type: string
+        commitSHA:
+          type: string
+        triggeredBy:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/Field"
+        detailText:
+          type: string
+        link:
+          type: string
+
+    Notification:
+      type: object
+      required: [summary, items]
+      properties:
+        summary:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+
+    NotifyRequest:
+      type: object
+      required: [recipient, notification, ref]
+      properties:
+        recipient:
+          type: string
+        notification:
+          $ref: "#/components/schemas/Notification"
+        ref:
+          type: string
+          description: Empty means post new; non-empty means try to edit this message.
+
+    NotifyResult:
+      type: object
+      required: [ref]
+      properties:
+        ref:
+          type: string
+          description: >-
+            Identifies the resulting message for a future edit attempt.
+            Backends that can't edit anything should return a fresh value
+            every call; the core does not treat this as an error.
+
+    ThreadReplyRequest:
+      type: object
+      required: [recipient, ref, text]
+      properties:
+        recipient:
+          type: string
+        ref:
+          type: string
+          description: The message to reply under.
+        text:
+          type: string
