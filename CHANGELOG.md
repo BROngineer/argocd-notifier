@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/BROngineer/argocd-notifier/compare/v0.2.1...v0.3.0) (2026-09-19)
+
+
+### Features
+
+* make notification backends support extendable ([#15](https://github.com/BROngineer/argocd-notifier/issues/15)) ([5cb6bd1](https://github.com/BROngineer/argocd-notifier/commit/5cb6bd10f069b8524cec6fe3e636342f00e910e6))
+
+
+### Bug Fixes
+
+* image tag resolution with fallback to chart's appVersion ([7cfa1c7](https://github.com/BROngineer/argocd-notifier/commit/7cfa1c78326b19b52ab97441728e15d519d81f7b))
+* route notifications per-app recipient, not batch-global ([#17](https://github.com/BROngineer/argocd-notifier/issues/17)) ([d1ef5f4](https://github.com/BROngineer/argocd-notifier/commit/d1ef5f4d7ba9eff1aa7b4e5cf6c9bfe6e8041696))
+
+
+### Miscellaneous
+
+* publish image workflow ([27ed001](https://github.com/BROngineer/argocd-notifier/commit/27ed00150e2736ae2d0289b2246fc2116c01a98a))
+
 ## [0.2.1](https://github.com/BROngineer/argocd-notifier/compare/v0.2.0...v0.2.1) (2026-09-18)
 
 
