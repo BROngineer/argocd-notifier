@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/BROngineer/argocd-notifier/api/core"
 	"github.com/BROngineer/argocd-notifier/internal/aggregator"
 	"github.com/BROngineer/argocd-notifier/internal/config"
 	"github.com/BROngineer/argocd-notifier/internal/httpx"
@@ -21,6 +22,7 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/logging"
 	"github.com/BROngineer/argocd-notifier/internal/notification"
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
+	"github.com/BROngineer/argocd-notifier/internal/registry"
 	"github.com/BROngineer/argocd-notifier/internal/slack"
 )
 
@@ -68,6 +70,8 @@ func main() {
 	)
 
 	handler := receiver.NewHandler(cfg.IngestQueueSize, logger)
+	backendRegistry := registry.NewRegistry(cfg.BackendRegistryTTL)
+	registryHandler := registry.NewHandler(backendRegistry, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -83,6 +87,7 @@ func main() {
 	mux.Handle(cfg.EventsPath, handler)
 	mux.HandleFunc("/healthz", httpx.HealthzHandler())
 	mux.HandleFunc("/readyz", httpx.ReadyzHandler(isReady))
+	core.HandlerFromMux(registryHandler, mux)
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
