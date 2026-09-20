@@ -3,33 +3,49 @@ IMAGE_NAME = { default = "argocd-notifier" }
 IMAGE_TAG = { default = "latest" }
 IMAGE_ARCHS = { default = "amd64 arm64" }
 IMAGE_OS = { default = "linux" }
+# One Dockerfile stage per binary — see Dockerfile's `AS <target>` stages.
+# Each becomes its own image at {{ env.IMAGE_NAME }}/<target>, matching
+# release-image.yml's ghcr.io/brongineer/argocd-notifier/<target> layout.
+IMAGE_TARGETS = { default = "aggregation-engine slack-backend" }
 
 [tasks."image:local"]
-description = "Build the image for the local platform and load it into docker"
-run = 'docker buildx build --load -t {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }} .'
+description = "Build every target's image for the local platform and load it into docker"
+run = '''
+for target in {{ env.IMAGE_TARGETS }}; do
+    docker buildx build \
+        --target ${target} \
+        --load \
+        -t {{ env.IMAGE_NAME }}/${target}:{{ env.IMAGE_TAG }} .
+done
+'''
 
 [tasks."image:push"]
-description = "Build image for every given arch."
+description = "Build every target's image for every given arch."
 quiet = true
 run = '''
-for arch in {{ env.IMAGE_ARCHS }}; do
-    docker buildx build \
-        --platform={{ env.IMAGE_OS }}/${arch} \
-        --load \
-        -t {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }}-${arch} \
-        --push .
+for target in {{ env.IMAGE_TARGETS }}; do
+    for arch in {{ env.IMAGE_ARCHS }}; do
+        docker buildx build \
+            --target ${target} \
+            --platform={{ env.IMAGE_OS }}/${arch} \
+            --load \
+            -t {{ env.IMAGE_NAME }}/${target}:{{ env.IMAGE_TAG }}-${arch} \
+            --push .
+    done
 done
 '''
 
 [tasks."manifest:push"]
-description = "Build common image manifest."
+description = "Build common image manifest for every target."
 quiet = true
 depends = ["image:push"]
 run = '''
-sources=""
-for arch in {{ env.IMAGE_ARCHS }}; do
-    sources="${sources} {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }}-${arch}"
+for target in {{ env.IMAGE_TARGETS }}; do
+    sources=""
+    for arch in {{ env.IMAGE_ARCHS }}; do
+        sources="${sources} {{ env.IMAGE_NAME }}/${target}:{{ env.IMAGE_TAG }}-${arch}"
+    done
+    docker buildx imagetools create --tag {{ env.IMAGE_NAME }}/${target}:{{ env.IMAGE_TAG }} \
+        ${sources}
 done
-docker buildx imagetools create --tag {{ env.IMAGE_NAME }}:{{ env.IMAGE_TAG }} \
-    ${sources}
 '''

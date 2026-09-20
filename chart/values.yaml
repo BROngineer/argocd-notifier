@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/brongineer/argocd-notifier
+  repository: ghcr.io/brongineer/argocd-notifier/aggregation-engine
   tag: "v0.3.0" # x-release-please-version
   pullPolicy: IfNotPresent
 
@@ -70,3 +70,52 @@ leaderElection:
 pprof:
   enabled: false
   addr: ":6060"
+
+# The standalone Slack backend (cmd/slack-backend) — a separate workload
+# that self-registers with the core above. Disabled by default: the core
+# runs standalone and delivers nowhere until a backend registers, Slack or
+# otherwise — see docs/adding-a-backend.md and docs/remote-backends.md.
+slackBackend:
+  enabled: false
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/brongineer/argocd-notifier/slack-backend
+    tag: "" # defaults to the chart's appVersion, same as image.tag above
+    pullPolicy: IfNotPresent
+
+  # Either set botToken (rendered into a Secret this chart creates) or
+  # existingSecret (a Secret you manage yourself) — exactly one is required.
+  slack:
+    botToken: ""
+    existingSecret: ""
+    existingSecretKey: "SLACK_BOT_TOKEN"
+    requestTimeout: "5s"
+    maxRetries: 3
+
+  listenAddr: ":8081"
+  # Both default to this same release's own core/slack-backend Services —
+  # only set these if you're pointing at a core (or running this backend)
+  # outside this release.
+  coreURL: ""
+  publicBaseURL: ""
+  # Must match the `application/backend` label value events route with.
+  backendName: "slack"
+  # Must stay comfortably under the core's backendRegistry.ttl above.
+  registerInterval: "30s"
+
+  logging:
+    level: "info"
+    format: "json"
+
+  service:
+    type: ClusterIP
+    port: 8081
+
+  podAnnotations: {}
+  podLabels: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []

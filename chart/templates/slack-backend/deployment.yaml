@@ -1,0 +1,85 @@
+{{- if .Values.slackBackend.enabled }}
+{{- if not (or .Values.slackBackend.slack.botToken .Values.slackBackend.slack.existingSecret) }}
+{{ fail "one of slackBackend.slack.botToken or slackBackend.slack.existingSecret must be set when slackBackend.enabled=true" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "argocd-notifier.slackBackendFullname" . }}
+  labels:
+    {{- include "argocd-notifier.slackBackendLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.slackBackend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "argocd-notifier.slackBackendSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.slackBackend.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "argocd-notifier.slackBackendSelectorLabels" . | nindent 8 }}
+        {{- with .Values.slackBackend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+        - name: slack-backend
+          image: "{{ .Values.slackBackend.image.repository }}:{{ include "argocd-notifier.slackBackendImageTag" . }}"
+          imagePullPolicy: {{ .Values.slackBackend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ trimPrefix ":" .Values.slackBackend.listenAddr | int }}
+              protocol: TCP
+          env:
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argocd-notifier.slackBackendSecretName" . }}
+                  key: {{ include "argocd-notifier.slackBackendSecretKey" . }}
+            - name: SLACK_REQUEST_TIMEOUT
+              value: {{ .Values.slackBackend.slack.requestTimeout | quote }}
+            - name: SLACK_MAX_RETRIES
+              value: {{ .Values.slackBackend.slack.maxRetries | quote }}
+            - name: LISTEN_ADDR
+              value: {{ .Values.slackBackend.listenAddr | quote }}
+            - name: CORE_URL
+              value: {{ include "argocd-notifier.coreURL" . | quote }}
+            - name: PUBLIC_BASE_URL
+              value: {{ include "argocd-notifier.slackBackendPublicBaseURL" . | quote }}
+            - name: BACKEND_NAME
+              value: {{ .Values.slackBackend.backendName | quote }}
+            - name: REGISTER_INTERVAL
+              value: {{ .Values.slackBackend.registerInterval | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.slackBackend.logging.level | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.slackBackend.logging.format | quote }}
+            {{- with .Values.slackBackend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.slackBackend.resources | nindent 12 }}
+      {{- with .Values.slackBackend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.slackBackend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.slackBackend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
