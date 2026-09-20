@@ -8,6 +8,26 @@ ArgoCD's notifications-engine fires one message per `Application`. When an Appli
 
 argocd-notifier's core sits between ArgoCD's notifications-engine and one or more notification backends — separate, self-registering processes that render/deliver to wherever they actually notify (Slack, email, PagerDuty, ...). It receives one webhook call per Application event, groups events sharing a label, and keeps **one live message per rollout**, editing it in place as more events arrive, instead of posting a new one every time.
 
+## Design
+
+The core debounces bursts of events sharing a label (an idle-reset window plus a hard cap so a rollout's first notification is never delayed indefinitely), keeps one *session* per rollout, and edits that session's message in place as more events arrive instead of posting a new one every time. Delivery is fully decoupled: the core never talks to Slack or anything else directly — a notification backend is a separate process that self-registers with the core over HTTP and receives pushed notifications, and the core only ever routes an event to whichever backend it named. See [docs/design.md](docs/design.md) for the full design (debounce/session mechanics, dedup, high availability) and [docs/remote-backends.md](docs/remote-backends.md) for the registration protocol itself.
+
+## Notification backends
+
+This project ships one backend out of the box — Slack ([`cmd/slack-backend`](cmd/slack-backend)) — deployable from this same chart as a second workload that self-registers against the core with no manual URL wiring:
+
+```sh
+helm install argocd-notifier ./chart \
+  --namespace argocd \
+  --set aggregation.groupLabel=application/name \
+  --set slackBackend.enabled=true \
+  --set slackBackend.slack.botToken=xoxb-your-bot-token
+```
+
+See `slackBackend.*` in [`chart/values.yaml`](chart/values.yaml) for every setting (existing-Secret support, `coreURL`/`publicBaseURL` overrides, etc.), and [docs/setup.md](docs/setup.md) for the full walkthrough including required Slack bot scopes.
+
+Anything beyond Slack — email, PagerDuty, Teams, a custom webhook — is up to you: the core doesn't ship it and doesn't need to know about it in advance. Implement the self-registration and `/notify` contract described in [docs/adding-a-backend.md](docs/adding-a-backend.md), in any language, run it as your own process, and point it at the core.
+
 ## Documentation
 
 - [docs/design.md](docs/design.md) — how it works, and why
@@ -17,7 +37,7 @@ argocd-notifier's core sits between ArgoCD's notifications-engine and one or mor
 
 ## Configuration
 
-The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, backend registry, logging, leader election, pprof).
+The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, backend registry, logging, leader election, pprof, and the `slackBackend` workload above).
 
 ## High availability
 
