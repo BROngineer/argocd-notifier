@@ -45,3 +45,13 @@ type Updater interface {
 type ThreadReplier interface {
 	PostThreadReply(ctx context.Context, recipient, ref, text string) error
 }
+
+// Notifier is a single-call alternative to Backend+Updater: the backend
+// decides for itself whether to post fresh or edit in place, and always
+// returns whatever ref now represents the result — which may differ from
+// the ref passed in. A backend implementing this is preferred over
+// Post/Update when both are present, since Update has no way to report a
+// changed ref back to the caller.
+type Notifier interface {
+	Notify(ctx context.Context, recipient, ref string, n Notification) (newRef string, err error)
+}
