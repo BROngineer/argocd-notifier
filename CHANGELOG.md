@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0](https://github.com/BROngineer/argocd-notifier/compare/v0.3.0...v0.4.0) (2026-09-20)
+
+
+### Features
+
+* backend api - open-api schemas and code-gen ([#18](https://github.com/BROngineer/argocd-notifier/issues/18)) ([503e728](https://github.com/BROngineer/argocd-notifier/commit/503e728692c5f91e9fb43376a7b63fb72448faf6))
+* backend registry for notification backends registration ([#21](https://github.com/BROngineer/argocd-notifier/issues/21)) ([4fec545](https://github.com/BROngineer/argocd-notifier/commit/4fec545ecbc90aeb5e5a02c33560f4be5a90ede0))
+* core full openapi ([#26](https://github.com/BROngineer/argocd-notifier/issues/26)) ([cc05fa4](https://github.com/BROngineer/argocd-notifier/commit/cc05fa41c74143def555451b3c3d72e0a4f32106))
+* **event:** add Backend field ([#20](https://github.com/BROngineer/argocd-notifier/issues/20)) ([3799947](https://github.com/BROngineer/argocd-notifier/commit/37999477f4fa862c8d3ab49801d973843be69cea))
+* multi-backend routing ([#23](https://github.com/BROngineer/argocd-notifier/issues/23)) ([062e654](https://github.com/BROngineer/argocd-notifier/commit/062e65426764ae8729eab3f9ceca0797187978af))
+* remote backend adapter ([#22](https://github.com/BROngineer/argocd-notifier/issues/22)) ([a812fa5](https://github.com/BROngineer/argocd-notifier/commit/a812fa5217f8623ba6da83e4048628c0feeb01fe))
+* slack standalone backend ([#24](https://github.com/BROngineer/argocd-notifier/issues/24)) ([a0f2c3f](https://github.com/BROngineer/argocd-notifier/commit/a0f2c3f9b8afdecd851913442d7942137ef86422))
+
+
+### Miscellaneous
+
+* **docs:** add remote backends design record ([082c546](https://github.com/BROngineer/argocd-notifier/commit/082c546acb55e64ee1c7f8504373833ef7822b38))
+* multi-image dockerfile and chart update ([#25](https://github.com/BROngineer/argocd-notifier/issues/25)) ([cfba4ff](https://github.com/BROngineer/argocd-notifier/commit/cfba4ffbb822f638069afd69d8c0a2b564ee08ee))
+
 ## [0.3.0](https://github.com/BROngineer/argocd-notifier/compare/v0.2.1...v0.3.0) (2026-09-19)
 
 
