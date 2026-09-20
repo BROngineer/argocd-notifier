@@ -114,26 +114,52 @@ func (b *fakePostOnlyBackend) Calls() []backendCall {
 	return append([]backendCall(nil), b.calls...)
 }
 
-func newTestPublisher(t *testing.T, cfg PublisherConfig, build *buildCounter, backend notification.Backend, clock Clock) *SessionPublisher {
-	t.Helper()
-	sp, err := newSessionPublisherWithClock(cfg, build.build, backend, testLogger(), clock)
-	if err != nil {
-		t.Fatalf("newSessionPublisherWithClock() error = %v", err)
-	}
-	return sp
+// fakeNotifierBackend implements only notification.Notifier — every call
+// returns a brand new ref regardless of what ref it was given, modeling a
+// remote backend that always reposts (or otherwise never reuses a ref) yet
+// must still have its returned ref tracked and passed back on the next call.
+type fakeNotifierBackend struct {
+	mu      sync.Mutex
+	calls   []backendCall
+	nextRef int
 }
 
-func TestNewSessionPublisher_ThreadActionRequiresThreadReplier(t *testing.T) {
-	_, err := newSessionPublisherWithClock(
-		PublisherConfig{SessionTTL: time.Hour, DuplicateAction: DuplicateActionThread},
-		(&buildCounter{}).build,
-		&fakePostOnlyBackend{},
-		testLogger(),
-		newFakeClock(),
-	)
-	if !strings.Contains(fmt.Sprint(err), "BackendDoesNotSupportThreadReply") {
-		t.Fatalf("error = %v, want ErrBackendDoesNotSupportThreadReply", err)
-	}
+func (b *fakeNotifierBackend) Notify(_ context.Context, recipient, ref string, n notification.Notification) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextRef++
+	newRef := fmt.Sprintf("nref-%d", b.nextRef)
+	b.calls = append(b.calls, backendCall{kind: "notify", recipient: recipient, ref: ref, summary: n.Summary})
+	return newRef, nil
+}
+
+func (b *fakeNotifierBackend) Calls() []backendCall {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]backendCall(nil), b.calls...)
+}
+
+// fakeResolver is a map-based BackendResolver — every backend, including
+// "slack", is resolved dynamically by name; there is no special-cased
+// compiled-in backend to test separately from any other name.
+type fakeResolver map[string]any
+
+func (f fakeResolver) Resolve(name string) (any, bool) {
+	b, ok := f[name]
+	return b, ok
+}
+
+// newTestPublisher resolves backend under the name "slack" — matching
+// baseEvent()'s Backend field — with no other names resolvable unless the
+// test needs one (see newTestPublisherMulti).
+func newTestPublisher(t *testing.T, cfg PublisherConfig, build *buildCounter, backend any, clock Clock) *SessionPublisher {
+	t.Helper()
+	return newTestPublisherMulti(t, cfg, build, fakeResolver{"slack": backend}, clock)
+}
+
+func newTestPublisherMulti(t *testing.T, cfg PublisherConfig, build *buildCounter, backends fakeResolver, clock Clock) *SessionPublisher {
+	t.Helper()
+	return newSessionPublisherWithClock(cfg, build.build, backends, testLogger(), clock)
 }
 
 func TestSessionPublisher_FirstUpsertPosts(t *testing.T) {
@@ -369,10 +395,7 @@ func TestSessionPublisher_BackendErrorOnOneChannelDoesNotBlockOthers(t *testing.
 func TestSessionPublisher_PostOnlyBackendAlwaysPostsFresh(t *testing.T) {
 	build := &buildCounter{}
 	backend := &fakePostOnlyBackend{}
-	sp, err := newSessionPublisherWithClock(PublisherConfig{SessionTTL: time.Hour}, build.build, backend, testLogger(), newFakeClock())
-	if err != nil {
-		t.Fatalf("newSessionPublisherWithClock() error = %v", err)
-	}
+	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
 
 	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
 	first := baseEvent()
@@ -393,5 +416,90 @@ func TestSessionPublisher_PostOnlyBackendAlwaysPostsFresh(t *testing.T) {
 	}
 	if calls[0].ref == calls[1].ref {
 		t.Fatalf("expected distinct refs since no ref is ever reused without Updater support")
+	}
+}
+
+func TestSessionPublisher_NotifierBackendTracksChangedRef(t *testing.T) {
+	build := &buildCounter{}
+	backend := &fakeNotifierBackend{}
+	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
+
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
+	first := baseEvent()
+	if err := sp.Upsert(context.Background(), key, []event.Event{first}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	second := first
+	second.HealthStatus = "Degraded"
+	if err := sp.Upsert(context.Background(), key, []event.Event{second}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	calls := backend.Calls()
+	if len(calls) != 2 || calls[0].kind != "notify" || calls[1].kind != "notify" {
+		t.Fatalf("expected [notify, notify], got %+v", calls)
+	}
+	if calls[0].ref != "" {
+		t.Fatalf("first notify ref = %q, want empty (post)", calls[0].ref)
+	}
+	if calls[1].ref != "nref-1" {
+		t.Fatalf("second notify ref = %q, want nref-1 (the ref returned by the first call)", calls[1].ref)
+	}
+}
+
+func TestSessionPublisher_RoutesToDifferentBackendsByEventField(t *testing.T) {
+	build := &buildCounter{}
+	slackBackend := &fakeBackend{}
+	otherBackend := &fakeBackend{}
+	sp := newTestPublisherMulti(t, PublisherConfig{SessionTTL: time.Hour}, build, fakeResolver{"slack": slackBackend, "other": otherBackend}, newFakeClock())
+
+	slackEvent := baseEvent()
+	slackEvent.AppName = "app-slack"
+	slackEvent.Recipient = "chan1"
+
+	otherEvent := baseEvent()
+	otherEvent.AppName = "app-other"
+	otherEvent.Backend = "other"
+	otherEvent.Recipient = "chan1" // same recipient string as slackEvent, deliberately: must not collide
+
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
+	if err := sp.Upsert(context.Background(), key, []event.Event{slackEvent, otherEvent}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	slackCalls := slackBackend.Calls()
+	if len(slackCalls) != 1 || slackCalls[0].summary != "app-slack" {
+		t.Fatalf("slack backend calls = %+v, want exactly one post for app-slack", slackCalls)
+	}
+	otherCalls := otherBackend.Calls()
+	if len(otherCalls) != 1 || otherCalls[0].summary != "app-other" {
+		t.Fatalf("other backend calls = %+v, want exactly one post for app-other", otherCalls)
+	}
+}
+
+func TestSessionPublisher_UnknownBackendLogsErrorAndContinuesOthers(t *testing.T) {
+	build := &buildCounter{}
+	backend := &fakeBackend{}
+	sp := newTestPublisher(t, PublisherConfig{SessionTTL: time.Hour}, build, backend, newFakeClock())
+
+	unknownEvent := baseEvent()
+	unknownEvent.AppName = "app-unknown"
+	unknownEvent.Backend = "nonexistent"
+	unknownEvent.Recipient = "chan2"
+
+	knownEvent := baseEvent()
+	knownEvent.AppName = "app-known"
+	knownEvent.Recipient = "chan1"
+
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
+	err := sp.Upsert(context.Background(), key, []event.Event{unknownEvent, knownEvent})
+	if err == nil || !strings.Contains(err.Error(), "nonexistent") {
+		t.Fatalf("expected error mentioning \"nonexistent\", got %v", err)
+	}
+
+	calls := backend.Calls()
+	if len(calls) != 1 || calls[0].recipient != "chan1" {
+		t.Fatalf("expected the known backend's recipient to still be posted to, got %+v", calls)
 	}
 }

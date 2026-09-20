@@ -75,17 +75,25 @@ func waitForCallCount(t *testing.T, getCalls func() []slackCall, want int) []sla
 	}
 }
 
+// staticTestResolver resolves a fixed set of backends by name — used where
+// a test wires a backend directly rather than through the registry (see
+// multi_backend_flow_test.go for the full registry-backed path).
+type staticTestResolver map[string]any
+
+func (r staticTestResolver) Resolve(name string) (any, bool) {
+	b, ok := r[name]
+	return b, ok
+}
+
 func newPipeline(t *testing.T, slackBaseURL string) (receiverURL string) {
 	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL))
+	resolver := staticTestResolver{"slack": slackClient}
 
-	publisher, err := aggregator.NewSessionPublisher(
+	publisher := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{SessionTTL: time.Hour, DuplicateAction: aggregator.DuplicateActionDrop},
-		slackClient,
+		resolver,
 		testLogger(),
 	)
-	if err != nil {
-		t.Fatalf("NewSessionPublisher() error = %v", err)
-	}
 
 	engine := aggregator.NewEngine(
 		aggregator.Config{IdleWindow: 50 * time.Millisecond, MaxWait: time.Second, CombineTriggers: true},

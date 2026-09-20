@@ -18,13 +18,11 @@ var (
 	ErrLeaseDurationTooShort          = errors.New("LeaseDurationTooShort")
 	ErrRenewDeadlineTooShort          = errors.New("RenewDeadlineTooShort")
 	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
-	ErrBackendNotSupported            = errors.New("BackendNotSupported")
-	ErrMissingSlackBotToken           = errors.New("MissingSlackBotToken")
 	ErrInvalidBackendRegistryTTL      = errors.New("InvalidBackendRegistryTTL")
+	ErrInvalidRemoteBackendTimeout    = errors.New("InvalidRemoteBackendTimeout")
 )
 
 type Config struct {
-	Backend         string `envconfig:"backend" default:"slack"`
 	ListenAddr      string `envconfig:"listen_addr" default:":8080"`
 	EventsPath      string `envconfig:"events_path" default:"/events"`
 	IngestQueueSize int    `envconfig:"ingest_queue_size" default:"1024"`
@@ -37,13 +35,12 @@ type Config struct {
 	SessionTTL      time.Duration `envconfig:"session_ttl" default:"45m"`
 	DuplicateAction string        `envconfig:"duplicate_action" default:"drop"`
 
-	SlackBotToken       string        `envconfig:"slack_bot_token"`
-	SlackRequestTimeout time.Duration `envconfig:"slack_request_timeout" default:"5s"`
-	SlackMaxRetries     int           `envconfig:"slack_max_retries" default:"3"`
-
 	// BackendRegistryTTL is how long a remote backend's registration stays
 	// valid without a heartbeat (a repeated register call) refreshing it.
 	BackendRegistryTTL time.Duration `envconfig:"backend_registry_ttl" default:"90s"`
+	// RemoteBackendRequestTimeout bounds each HTTP call this process makes
+	// to a dynamically-registered remote backend's /notify or /thread-reply.
+	RemoteBackendRequestTimeout time.Duration `envconfig:"remote_backend_request_timeout" default:"5s"`
 
 	LogLevel  string `envconfig:"log_level" default:"info"`
 	LogFormat string `envconfig:"log_format" default:"json"`
@@ -102,9 +99,6 @@ func (c *Config) Validate() error {
 	default:
 		errs = append(errs, ErrInvalidDuplicateAction)
 	}
-	if c.Backend == "slack" && c.SlackBotToken == "" {
-		errs = append(errs, ErrMissingSlackBotToken)
-	}
 	if c.LeaderElectionEnabled {
 		if c.LeaderElectionNamespace == "" {
 			errs = append(errs, ErrMissingLeaderElectionNamespace)
@@ -121,6 +115,9 @@ func (c *Config) Validate() error {
 	}
 	if c.BackendRegistryTTL <= 0 {
 		errs = append(errs, ErrInvalidBackendRegistryTTL)
+	}
+	if c.RemoteBackendRequestTimeout <= 0 {
+		errs = append(errs, ErrInvalidRemoteBackendTimeout)
 	}
 	return errors.Join(errs...)
 }

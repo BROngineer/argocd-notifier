@@ -45,6 +45,7 @@ func baseEvent() event.Event {
 		Trigger:   "on-deployed",
 		Revision:  "rev-1",
 		Recipient: "test1234asdf",
+		Backend:   "slack",
 	}
 }
 

@@ -23,12 +23,19 @@ const (
 	DuplicateActionThread DuplicateAction = "thread"
 )
 
-var ErrBackendDoesNotSupportThreadReply = errors.New("BackendDoesNotSupportThreadReply")
+// RefKey identifies one tracked message: a session can route different
+// apps to different (backend, recipient) pairs, and two different backends
+// may legitimately use the same recipient string to mean different things
+// (e.g. a Slack channel name vs. some other backend's queue name) — so the
+// ref cache must be keyed by the pair, not recipient alone.
+type RefKey struct {
+	Backend   string
+	Recipient string
+}
 
-// MessageRefs maps recipient -> backend-specific message reference (e.g.
-// Slack's ts), since a session's recipient can be several channels/targets
-// (the existing per-app slack.channels list).
-type MessageRefs map[string]string
+// MessageRefs maps a (backend, recipient) pair to that backend's own
+// message reference (e.g. Slack's ts).
+type MessageRefs map[RefKey]string
 
 type sessionState struct {
 	perApp    map[string]event.Event
@@ -47,37 +54,34 @@ type SessionPublisher struct {
 	cfg      PublisherConfig
 	clock    Clock
 	build    func(map[string]event.Event) (notification.Notification, error)
-	backend  notification.Backend
+	resolver BackendResolver
 	logger   *slog.Logger
 }
 
-// NewSessionPublisher fails fast if DuplicateAction is "thread" but backend
-// doesn't implement notification.ThreadReplier — better to refuse to start
-// than to silently drop thread-reply requests at runtime.
-func NewSessionPublisher(cfg PublisherConfig, backend notification.Backend, logger *slog.Logger) (*SessionPublisher, error) {
-	return newSessionPublisherWithClock(cfg, notification.Build, backend, logger, realClock{})
+// NewSessionPublisher resolves each routed event's backend by name via
+// resolver, rather than binding to one fixed backend — see
+// aggregator.ValidateStaticBackend for the equivalent of the old
+// construction-time thread-reply fail-fast, which only makes sense for the
+// one compiled-in backend known at startup.
+func NewSessionPublisher(cfg PublisherConfig, resolver BackendResolver, logger *slog.Logger) *SessionPublisher {
+	return newSessionPublisherWithClock(cfg, notification.Build, resolver, logger, realClock{})
 }
 
 func newSessionPublisherWithClock(
 	cfg PublisherConfig,
 	build func(map[string]event.Event) (notification.Notification, error),
-	backend notification.Backend,
+	resolver BackendResolver,
 	logger *slog.Logger,
 	clock Clock,
-) (*SessionPublisher, error) {
-	if cfg.DuplicateAction == DuplicateActionThread {
-		if _, ok := backend.(notification.ThreadReplier); !ok {
-			return nil, ErrBackendDoesNotSupportThreadReply
-		}
-	}
+) *SessionPublisher {
 	return &SessionPublisher{
 		sessions: make(map[SessionKey]*sessionState),
 		cfg:      cfg,
 		clock:    clock,
 		build:    build,
-		backend:  backend,
+		resolver: resolver,
 		logger:   logger,
-	}, nil
+	}
 }
 
 func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events []event.Event) error {
@@ -116,35 +120,62 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 	if changed {
 		// Recipient is a per-app (really per-trigger, on the ArgoCD side)
 		// routing decision, not "who to CC on one shared message" — group
-		// by recipient first, so each channel only sees the apps actually
-		// addressed to it, instead of every recipient getting whatever the
-		// first event in the batch happened to be routed to.
-		updater, canUpdate := sp.backend.(notification.Updater)
+		// by (backend, recipient) first, so each destination only sees the
+		// apps actually addressed to it, instead of every destination
+		// getting whatever the first event in the batch happened to route
+		// to. Two different backends can share a recipient string without
+		// colliding, since the key carries both.
 		newRefs := make(MessageRefs)
-		for recipient, apps := range groupAppsByRecipient(perAppSnapshot) {
+		for rk, apps := range groupAppsByBackendRecipient(perAppSnapshot) {
 			n, err := sp.build(apps)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("build notification for %s: %w", recipient, err))
+				errs = append(errs, fmt.Errorf("build notification for %s/%s: %w", rk.Backend, rk.Recipient, err))
+				continue
+			}
+
+			backend, ok := sp.resolver.Resolve(rk.Backend)
+			if !ok {
+				errs = append(errs, fmt.Errorf("no backend registered for %q", rk.Backend))
+				continue
+			}
+
+			// A backend implementing Notifier decides post-vs-update
+			// itself and may hand back a changed ref even on what looks
+			// like an edit — always trust whatever it returns.
+			if notifier, ok := backend.(notification.Notifier); ok {
+				newRef, err := notifier.Notify(ctx, rk.Recipient, refsSnapshot[rk], n)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("notify %s/%s: %w", rk.Backend, rk.Recipient, err))
+					continue
+				}
+				newRefs[rk] = newRef
+				continue
+			}
+
+			b, ok := backend.(notification.Backend)
+			if !ok {
+				errs = append(errs, fmt.Errorf("backend %q implements neither Notifier nor Backend", rk.Backend))
 				continue
 			}
 
 			// A backend that can't edit a previous message just gets a
 			// fresh Post every flush instead — no ref is ever tracked.
+			updater, canUpdate := b.(notification.Updater)
 			if canUpdate {
-				if ref, ok := refsSnapshot[recipient]; ok {
-					if err := updater.Update(ctx, recipient, ref, n); err != nil {
-						errs = append(errs, fmt.Errorf("update %s: %w", recipient, err))
+				if ref, ok := refsSnapshot[rk]; ok {
+					if err := updater.Update(ctx, rk.Recipient, ref, n); err != nil {
+						errs = append(errs, fmt.Errorf("update %s/%s: %w", rk.Backend, rk.Recipient, err))
 					}
 					continue
 				}
 			}
-			ref, err := sp.backend.Post(ctx, recipient, n)
+			ref, err := b.Post(ctx, rk.Recipient, n)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("post %s: %w", recipient, err))
+				errs = append(errs, fmt.Errorf("post %s/%s: %w", rk.Backend, rk.Recipient, err))
 				continue
 			}
 			if canUpdate {
-				newRefs[recipient] = ref
+				newRefs[rk] = ref
 			}
 		}
 
@@ -158,16 +189,25 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 	}
 
 	if sp.cfg.DuplicateAction == DuplicateActionThread {
-		threader, _ := sp.backend.(notification.ThreadReplier) // guaranteed by NewSessionPublisher validation
 		for _, ev := range duplicates {
+			backend, ok := sp.resolver.Resolve(ev.Backend)
+			if !ok {
+				errs = append(errs, fmt.Errorf("no backend registered for %q", ev.Backend))
+				continue
+			}
+			threader, ok := backend.(notification.ThreadReplier)
+			if !ok {
+				continue
+			}
 			note := fmt.Sprintf("%s reported %s again (unchanged) at %s", ev.AppName, ev.Trigger, now.Format(time.RFC3339))
 			for _, recipient := range splitRecipients(ev.Recipient) {
-				ref, ok := refsSnapshot[recipient]
+				rk := RefKey{Backend: ev.Backend, Recipient: recipient}
+				ref, ok := refsSnapshot[rk]
 				if !ok {
 					continue
 				}
 				if err := threader.PostThreadReply(ctx, recipient, ref, note); err != nil {
-					errs = append(errs, fmt.Errorf("thread reply %s: %w", recipient, err))
+					errs = append(errs, fmt.Errorf("thread reply %s/%s: %w", ev.Backend, recipient, err))
 				}
 			}
 		}
@@ -176,19 +216,21 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 	return errors.Join(errs...)
 }
 
-// groupAppsByRecipient fans an app out to every channel its own latest
-// event names (semicolon-joined recipients split independently per app),
-// so a session with mixed routing (different clusters/triggers addressed
-// to different channels) renders a distinct, correctly-scoped notification
-// per recipient instead of one shared view.
-func groupAppsByRecipient(perApp map[string]event.Event) map[string]map[string]event.Event {
-	out := make(map[string]map[string]event.Event)
+// groupAppsByBackendRecipient fans an app out to every (backend, recipient)
+// pair its own latest event names (semicolon-joined recipients split
+// independently per app, all under that event's single Backend), so a
+// session with mixed routing (different clusters/triggers/backends
+// addressed to different destinations) renders a distinct,
+// correctly-scoped notification per destination instead of one shared view.
+func groupAppsByBackendRecipient(perApp map[string]event.Event) map[RefKey]map[string]event.Event {
+	out := make(map[RefKey]map[string]event.Event)
 	for appName, ev := range perApp {
 		for _, recipient := range splitRecipients(ev.Recipient) {
-			if out[recipient] == nil {
-				out[recipient] = make(map[string]event.Event)
+			rk := RefKey{Backend: ev.Backend, Recipient: recipient}
+			if out[rk] == nil {
+				out[rk] = make(map[string]event.Event)
 			}
-			out[recipient][appName] = ev
+			out[rk][appName] = ev
 		}
 	}
 	return out

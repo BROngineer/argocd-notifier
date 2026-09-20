@@ -1,70 +1,47 @@
 # Adding a notification backend
 
-argocd-notifier ships with one backend, Slack (`internal/slack`). This walks through what a second one needs, using Slack as the reference implementation.
+A notification backend is a **separate process, in any language**. It self-registers with argocd-notifier's core over HTTP, then receives pushed notifications over HTTP. There is no Go interface to implement and no PR against this repo required — see `docs/remote-backends.md` for the full design rationale. This doc is the practical how-to; there is no reference implementation shipped yet (Phase 5 of `docs/remote-backends.md` adds one, wrapping `internal/slack`'s existing rendering/client code behind this same contract).
 
-## The interfaces (`internal/notification`)
+## 1. Register, and keep registering (heartbeat)
 
-```go
-type Backend interface {
-    Post(ctx context.Context, recipient string, n Notification) (ref string, err error)
-}
+`POST {core's address}/v1/backends/register` (spec: `api/core/openapi.yaml`):
 
-type Updater interface {
-    Update(ctx context.Context, recipient, ref string, n Notification) error
-}
-
-type ThreadReplier interface {
-    PostThreadReply(ctx context.Context, recipient, ref, text string) error
-}
+```json
+{ "name": "my-backend", "baseURL": "http://my-backend.svc:8080", "supportsThreadReply": false }
 ```
 
-**Only `Backend.Post` is required.** That's the one thing every notification target can do — send something new. `Updater` and `ThreadReplier` are optional, checked via type assertion (the same pattern as `io.Writer`/`io.Closer`) — implement them only if your backend actually supports editing a previous message or replying in a thread under one. There's no `SupportsX() bool` method to keep in sync; implementing the method *is* the capability signal.
+- `name` is what events route to — an event's `backend` field (set via the `application/backend` Application label, see `docs/setup.md`) must match this exactly.
+- `baseURL` is a base address only — the core appends `/notify` and `/thread-reply` itself. No trailing slash.
+- Call this again with the same `name` to refresh your registration — there's no separate heartbeat endpoint. **You must keep doing this periodically** (well under the core's `BACKEND_REGISTRY_TTL`, default 90s): the registry is in-memory, so a leader failover starts with zero registered backends, and re-registering is how you're noticed again. A one-time registration at startup is not enough.
+- No authentication today — anything that can reach the endpoint can claim any name. Don't expose this beyond a trusted network yet (see `docs/remote-backends.md`'s deferred-items list).
 
-- **Implement `Updater`** if your backend can edit a message it already sent, given the `ref` you returned from `Post` (Slack's message `ts`, Discord/Telegram's message ID, etc.). If you don't, `SessionPublisher` never tracks a ref for your backend — every flush becomes a fresh `Post` instead of an in-place edit. That's a legitimate, supported mode, not a workaround: it's exactly right for backends where editing isn't possible at all (generic webhooks, email, PagerDuty-style incident creation).
-- **Implement `ThreadReplier`** if your backend supports replying under an existing message. This is only used when `DUPLICATE_ACTION=thread` is configured. If you don't implement it, that's fine too — but `NewSessionPublisher` will refuse to start if the operator configures `thread` against your backend (fail fast, not a silent no-op at runtime).
+## 2. Serve `/notify`
 
-## `Notification` and `Item`
+`POST {your baseURL}/notify` (spec: `api/backendapi/openapi.yaml`):
 
-```go
-type Notification struct {
-    Summary string
-    Items   []Item
-}
-
-type Item struct {
-    AppName, Cluster, Trigger string
-    CommitURL, CommitSHA      string
-    TriggeredBy               string
-    Images                    []string
-    Fields                    []Field // ordered label/value pairs for anything not above
-    DetailText                string  // e.g. a truncated sync-failure message
-    Link                      string  // "Open in ArgoCD" URL
-}
+```json
+// in
+{ "recipient": "...", "ref": "", "notification": { "summary": "...", "items": [ /* ... */ ] } }
+// out
+{ "ref": "..." }
 ```
 
-This is deliberately plain data — no Slack markup, no Block Kit, nothing backend-specific. `CommitURL`/`CommitSHA` are separate fields rather than one pre-formatted "Commit" string precisely so each backend can render its own hyperlink syntax (Slack's `<url|text>`, Markdown's `[text](url)`, an HTML anchor, or just two plain fields) instead of inheriting Slack's.
+**You decide post-vs-update, not the core.** An empty `ref` means "nothing exists yet — post fresh." A non-empty `ref` means "the core last saw this value — try to edit if you can." Either way, return whatever `ref` now identifies the result; the core stores it verbatim and sends it back on the next call for that same session/recipient. If you can't edit anything, always post fresh and always return a new `ref` — that's a fully supported mode, not a workaround.
 
-`notification.Build(perApp map[string]event.Event) (Notification, error)` — the aggregation logic (grouping, sorting, per-trigger field selection) — is shared by every backend; you don't reimplement it.
+`notification.items[]` fields (`appName`, `cluster`, `trigger` required; `commitURL`/`commitSHA`/`triggeredBy`/`images`/`fields`/`detailText`/`link` optional) are deliberately plain data — no markup, nothing platform-specific. Render them into your own format (Slack's Block Kit, a Discord embed, an email body, whatever).
 
-## What a new backend needs to write
+## 3. Serve `/thread-reply` (optional)
 
-Using `internal/slack` as the template:
+Only if you set `supportsThreadReply: true` at registration. `POST {your baseURL}/thread-reply`:
 
-1. A renderer: `Item` → your wire format. This is where your backend's specific limits and markup live — Slack's is `internal/slack/render.go` (colors per trigger, Block Kit field construction, the 100-attachment chunking cap with a "+N more" marker).
-2. A client: your backend's actual API/transport, implementing `Post` (and `Update`/`PostThreadReply` if applicable) — see `internal/slack/client.go` for retry/backoff conventions (bounded retries on 429/5xx, terminal on other API errors).
-3. A `case` in `cmd/argocd-notifier/main.go`'s `switch cfg.Backend`, alongside `"slack"` — this is the one place that knows which backend names exist, selected via the `BACKEND` env var (`internal/config`'s `Backend` field, default `"slack"`). Each *running instance* still only ever talks to one backend picked at startup; there's no fan-out to multiple backends from a single process.
-4. Any backend-specific required config (e.g. Slack's bot token) belongs in `Config.Validate()` guarded by `if c.Backend == "<yours>"`, the same way `SlackBotToken` is only required `if c.Backend == "slack"` — not an unconditional `envconfig` `required:"true"` tag, which would demand your backend's config even when a *different* backend is selected. The chart (`chart/templates/deployment.yaml`) follows the same pattern for its fail-fast checks and env wiring.
+```json
+{ "recipient": "...", "ref": "...", "text": "..." }
+```
+
+The core only calls this when the operator has `DUPLICATE_ACTION=thread` configured **and** your registration currently declares support — it re-checks your latest registration on every call, so toggling `supportsThreadReply` on a later re-registration takes effect immediately, without restarting the core.
 
 ## Testing
 
-Add a compile-time assertion your backend satisfies the interfaces it claims to (see `internal/slack/client.go`):
-
-```go
-var (
-    _ notification.Backend       = (*Client)(nil)
-    _ notification.Updater       = (*Client)(nil)
-    _ notification.ThreadReplier = (*Client)(nil)
-)
-```
-
-For `SessionPublisher` behavior with a backend that *doesn't* implement `Updater` (always-post-fresh) or `ThreadReplier` (fail-fast on `thread`), see `TestSessionPublisher_PostOnlyBackendAlwaysPostsFresh` and `TestNewSessionPublisher_ThreadActionRequiresThreadReplier` in `internal/aggregator/session_test.go` — those exercise the graceful-degradation and fail-fast paths this doc describes, against a fake backend with only `Post` implemented.
+- Round-trip your `/notify` and `/thread-reply` handlers against `api/backendapi`'s generated request/response shapes (if you're writing Go, `oapi-codegen`'s output in `api/backendapi/backendapi.gen.go` gives you both server and client types for this — see `internal/remotebackend`'s tests for the request/response shapes the core actually sends).
+- Verify registering twice with the same `name` doesn't error (heartbeat) and updates `baseURL`/`supportsThreadReply` if they changed.
+- If you support thread replies, verify the core's request reaches you only when you're currently registered with `supportsThreadReply: true`.
