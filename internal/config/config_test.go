@@ -65,6 +65,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.BackendRegistryTTL != 90*time.Second {
 		t.Errorf("BackendRegistryTTL = %v, want 90s", cfg.BackendRegistryTTL)
 	}
+	if cfg.RemoteBackendRequestTimeout != 5*time.Second {
+		t.Errorf("RemoteBackendRequestTimeout = %v, want 5s", cfg.RemoteBackendRequestTimeout)
+	}
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -92,15 +95,16 @@ func TestLoad_MissingRequired(t *testing.T) {
 func TestConfig_Validate(t *testing.T) {
 	base := func() Config {
 		return Config{
-			Backend:            "slack",
-			GroupLabel:         "application/name",
-			IdleWindow:         30 * time.Second,
-			MaxWait:            5 * time.Minute,
-			SessionTTL:         45 * time.Minute,
-			SlackBotToken:      "xoxb-test",
-			LogFormat:          "json",
-			DuplicateAction:    "drop",
-			BackendRegistryTTL: 90 * time.Second,
+			Backend:                     "slack",
+			GroupLabel:                  "application/name",
+			IdleWindow:                  30 * time.Second,
+			MaxWait:                     5 * time.Minute,
+			SessionTTL:                  45 * time.Minute,
+			SlackBotToken:               "xoxb-test",
+			LogFormat:                   "json",
+			DuplicateAction:             "drop",
+			BackendRegistryTTL:          90 * time.Second,
+			RemoteBackendRequestTimeout: 5 * time.Second,
 		}
 	}
 
@@ -188,6 +192,16 @@ func TestConfig_Validate(t *testing.T) {
 			name:    "negative backend registry ttl",
 			mutate:  func(c *Config) { c.BackendRegistryTTL = -time.Second },
 			wantErr: ErrInvalidBackendRegistryTTL,
+		},
+		{
+			name:    "zero remote backend request timeout",
+			mutate:  func(c *Config) { c.RemoteBackendRequestTimeout = 0 },
+			wantErr: ErrInvalidRemoteBackendTimeout,
+		},
+		{
+			name:    "negative remote backend request timeout",
+			mutate:  func(c *Config) { c.RemoteBackendRequestTimeout = -time.Second },
+			wantErr: ErrInvalidRemoteBackendTimeout,
 		},
 	}
 

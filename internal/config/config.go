@@ -21,6 +21,7 @@ var (
 	ErrBackendNotSupported            = errors.New("BackendNotSupported")
 	ErrMissingSlackBotToken           = errors.New("MissingSlackBotToken")
 	ErrInvalidBackendRegistryTTL      = errors.New("InvalidBackendRegistryTTL")
+	ErrInvalidRemoteBackendTimeout    = errors.New("InvalidRemoteBackendTimeout")
 )
 
 type Config struct {
@@ -44,6 +45,9 @@ type Config struct {
 	// BackendRegistryTTL is how long a remote backend's registration stays
 	// valid without a heartbeat (a repeated register call) refreshing it.
 	BackendRegistryTTL time.Duration `envconfig:"backend_registry_ttl" default:"90s"`
+	// RemoteBackendRequestTimeout bounds each HTTP call this process makes
+	// to a dynamically-registered remote backend's /notify or /thread-reply.
+	RemoteBackendRequestTimeout time.Duration `envconfig:"remote_backend_request_timeout" default:"5s"`
 
 	LogLevel  string `envconfig:"log_level" default:"info"`
 	LogFormat string `envconfig:"log_format" default:"json"`
@@ -121,6 +125,9 @@ func (c *Config) Validate() error {
 	}
 	if c.BackendRegistryTTL <= 0 {
 		errs = append(errs, ErrInvalidBackendRegistryTTL)
+	}
+	if c.RemoteBackendRequestTimeout <= 0 {
+		errs = append(errs, ErrInvalidRemoteBackendTimeout)
 	}
 	return errors.Join(errs...)
 }
