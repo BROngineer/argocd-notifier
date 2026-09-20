@@ -20,6 +20,7 @@ var (
 	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
 	ErrBackendNotSupported            = errors.New("BackendNotSupported")
 	ErrMissingSlackBotToken           = errors.New("MissingSlackBotToken")
+	ErrInvalidBackendRegistryTTL      = errors.New("InvalidBackendRegistryTTL")
 )
 
 type Config struct {
@@ -39,6 +40,10 @@ type Config struct {
 	SlackBotToken       string        `envconfig:"slack_bot_token"`
 	SlackRequestTimeout time.Duration `envconfig:"slack_request_timeout" default:"5s"`
 	SlackMaxRetries     int           `envconfig:"slack_max_retries" default:"3"`
+
+	// BackendRegistryTTL is how long a remote backend's registration stays
+	// valid without a heartbeat (a repeated register call) refreshing it.
+	BackendRegistryTTL time.Duration `envconfig:"backend_registry_ttl" default:"90s"`
 
 	LogLevel  string `envconfig:"log_level" default:"info"`
 	LogFormat string `envconfig:"log_format" default:"json"`
@@ -113,6 +118,9 @@ func (c *Config) Validate() error {
 	}
 	if c.PprofEnabled && c.PprofAddr == c.ListenAddr {
 		errs = append(errs, ErrPprofAddrConflict)
+	}
+	if c.BackendRegistryTTL <= 0 {
+		errs = append(errs, ErrInvalidBackendRegistryTTL)
 	}
 	return errors.Join(errs...)
 }
