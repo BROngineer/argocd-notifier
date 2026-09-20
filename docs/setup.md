@@ -56,7 +56,7 @@ data:
     url: http://argocd-notifier.argocd.svc.cluster.local:8080
 ```
 
-The `url` is the base address; argocd-notifier's HTTP path (`EVENTS_PATH`, default `/events`) is set per-template below, so it must match whatever you configured `EVENTS_PATH` to on the argocd-notifier side.
+The `url` is the base address; argocd-notifier's HTTP path is fixed at `/events` (see `api/core/openapi.yaml`) and set per-template below.
 
 Now add (or edit) the templates for whichever triggers you want aggregated. If you already have ArgoCD's default notification catalog loaded, these template *names* likely already exist (feeding the default `slack:` key) — you're adding a `webhook:` key to the same template, not replacing the trigger definitions. Three representative examples (the same fields argocd-notifier's `render` package already knows how to draw for every one of ArgoCD's 8 built-in triggers — `on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`):
 

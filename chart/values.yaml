@@ -32,7 +32,6 @@ extraEnv: []
 
 server:
   listenAddr: ":8080"
-  eventsPath: "/events"
   ingestQueueSize: 1024
   workerCount: 4
 
