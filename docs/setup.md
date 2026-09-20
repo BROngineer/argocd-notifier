@@ -18,6 +18,18 @@ See [`chart/values.yaml`](../chart/values.yaml) for every setting. Multi-replica
 
 This deploys the core only — the part that receives, debounces, and routes events. It doesn't talk to Slack or anything else directly: notifications only actually go anywhere once at least one backend process self-registers against it. See [`adding-a-backend.md`](adding-a-backend.md) for the registration contract, and [`remote-backends.md`](remote-backends.md) for the design behind it.
 
+For Slack specifically, this same chart also deploys the reference [`cmd/slack-backend`](../cmd/slack-backend) as a second workload in the same release — enable it and it self-registers against the core Service this release already creates, no manual URL wiring needed:
+
+```sh
+helm install argocd-notifier ./chart \
+  --namespace argocd \
+  --set aggregation.groupLabel=application/name \
+  --set slackBackend.enabled=true \
+  --set slackBackend.slack.botToken=xoxb-your-bot-token
+```
+
+Prefer an existing Secret you manage yourself (sealed-secrets, external-secrets) over `slackBackend.slack.botToken` in production: `--set slackBackend.slack.existingSecret=my-slack-secret`. The Slack bot token needs the `chat:write` scope, and the bot must be invited to every channel you intend to notify (`/invite @your-bot`) or `chat.postMessage`/`chat.update` will fail with `not_in_channel`. See `slackBackend.*` in [`chart/values.yaml`](../chart/values.yaml) for every setting, including `coreURL`/`publicBaseURL` overrides for pointing this backend at a core deployed outside this release.
+
 To profile a running instance, set `--set pprof.enabled=true` (its own container port, deliberately not exposed via the Service), then:
 
 ```sh
