@@ -11,23 +11,12 @@ Using the chart at [`chart/`](../chart):
 ```sh
 helm install argocd-notifier ./chart \
   --namespace argocd \
-  --set slack.botToken=xoxb-your-bot-token \
   --set aggregation.groupLabel=application/name  # must match a real label on your Applications — see step 3
-```
-
-For production, prefer an existing Secret you manage yourself (e.g. via sealed-secrets or external-secrets) over `slack.botToken`:
-
-```sh
-helm install argocd-notifier ./chart \
-  --namespace argocd \
-  --set slack.existingSecret=my-slack-secret \
-  --set slack.existingSecretKey=SLACK_BOT_TOKEN \
-  --set aggregation.groupLabel=application/name
 ```
 
 See [`chart/values.yaml`](../chart/values.yaml) for every setting. Multi-replica setups need `--set leaderElection.enabled=true` — the chart renders the RBAC `Role`/`RoleBinding` this requires automatically; see [design.md#high-availability](design.md#high-availability) before doing that (skip it for a single replica).
 
-The Slack bot token needs the `chat:write` scope, and the bot must be invited to every channel you intend to notify (`/invite @your-bot` in Slack) or `chat.postMessage`/`chat.update` will fail with `not_in_channel`.
+This deploys the core only — the part that receives, debounces, and routes events. It doesn't talk to Slack or anything else directly: notifications only actually go anywhere once at least one backend process self-registers against it. See [`adding-a-backend.md`](adding-a-backend.md) for the registration contract, and [`remote-backends.md`](remote-backends.md) for the design behind it.
 
 To profile a running instance, set `--set pprof.enabled=true` (its own container port, deliberately not exposed via the Service), then:
 

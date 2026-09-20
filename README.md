@@ -4,25 +4,26 @@ ArgoCD notification aggregation service.
 
 ## Problem
 
-ArgoCD's notifications-engine fires one message per `Application`. When an ApplicationSet fans a single service out across many clusters (e.g. one service targeting N clusters, all sharing a label like `application/name: sample`), a single fleet-wide deploy or incident produces one Slack message per cluster instead of one per rollout.
+ArgoCD's notifications-engine fires one message per `Application`. When an ApplicationSet fans a single service out across many clusters (e.g. one service targeting N clusters, all sharing a label like `application/name: sample`), a single fleet-wide deploy or incident produces one notification per cluster instead of one per rollout.
 
-argocd-notifier sits between ArgoCD's notifications-engine and Slack: it receives one webhook call per Application event, groups events sharing a label, and keeps **one live Slack message per rollout**, editing it in place as more events arrive, instead of posting a new message every time.
+argocd-notifier's core sits between ArgoCD's notifications-engine and one or more notification backends — separate, self-registering processes that render/deliver to wherever they actually notify (Slack, email, PagerDuty, ...). It receives one webhook call per Application event, groups events sharing a label, and keeps **one live message per rollout**, editing it in place as more events arrive, instead of posting a new one every time.
 
 ## Documentation
 
 - [docs/design.md](docs/design.md) — how it works, and why
 - [docs/setup.md](docs/setup.md) — wiring ArgoCD's notifications-engine to argocd-notifier
-- [docs/adding-a-backend.md](docs/adding-a-backend.md) — adding a notification backend beyond Slack
+- [docs/adding-a-backend.md](docs/adding-a-backend.md) — adding a notification backend
+- [docs/remote-backends.md](docs/remote-backends.md) — the self-registration design
 
 ## Configuration
 
-The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, Slack, logging, leader election, pprof).
+The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, backend registry, logging, leader election, pprof).
 
 ## High availability
 
 Running more than 1 replica **requires** leader election (`LEADER_ELECTION_ENABLED=true`) — without it, a k8s `Service` load-balances ArgoCD's webhook calls across replicas, each keeping its own independent in-memory state, which reproduces the exact "many messages instead of one" problem this service exists to solve.
 
-This is **failover-speed-plus-no-split-brain only, not state durability**: leader election guarantees exactly one replica is ever active, and failover to a standby is fast (seconds, bounded by `LEASE_DURATION`/`RENEW_DEADLINE`) — but the new leader still starts with empty in-memory session state, same as a single-replica restart. Making session state (and thus in-flight Slack message `ts` references) survive a leader change would need externalized state (e.g. Redis) — deliberately out of scope for now.
+This is **failover-speed-plus-no-split-brain only, not state durability**: leader election guarantees exactly one replica is ever active, and failover to a standby is fast (seconds, bounded by `LEASE_DURATION`/`RENEW_DEADLINE`) — but the new leader still starts with empty in-memory session state and zero registered backends, same as a single-replica restart. Making session state (and thus in-flight message refs) survive a leader change would need externalized state (e.g. Redis) — deliberately out of scope for now. Backends re-registering periodically (heartbeat) is what lets them get noticed by a new leader — see [docs/remote-backends.md](docs/remote-backends.md).
 
 Mechanism: each replica runs a `leaderelection.LeaderElector` (`internal/leader`) against a `coordination.k8s.io/v1` `Lease`. Only the current leader's `/readyz` returns 200 (`httpx.ReadyzHandler` fed by `Elector.IsLeader`); non-leaders report not-ready, so the k8s Service's endpoint list contains only the leader and routes 100% of traffic to it.
 
