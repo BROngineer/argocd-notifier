@@ -62,6 +62,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.PprofAddr != ":6060" {
 		t.Errorf("PprofAddr = %q, want :6060", cfg.PprofAddr)
 	}
+	if cfg.BackendRegistryTTL != 90*time.Second {
+		t.Errorf("BackendRegistryTTL = %v, want 90s", cfg.BackendRegistryTTL)
+	}
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -89,14 +92,15 @@ func TestLoad_MissingRequired(t *testing.T) {
 func TestConfig_Validate(t *testing.T) {
 	base := func() Config {
 		return Config{
-			Backend:         "slack",
-			GroupLabel:      "application/name",
-			IdleWindow:      30 * time.Second,
-			MaxWait:         5 * time.Minute,
-			SessionTTL:      45 * time.Minute,
-			SlackBotToken:   "xoxb-test",
-			LogFormat:       "json",
-			DuplicateAction: "drop",
+			Backend:            "slack",
+			GroupLabel:         "application/name",
+			IdleWindow:         30 * time.Second,
+			MaxWait:            5 * time.Minute,
+			SessionTTL:         45 * time.Minute,
+			SlackBotToken:      "xoxb-test",
+			LogFormat:          "json",
+			DuplicateAction:    "drop",
+			BackendRegistryTTL: 90 * time.Second,
 		}
 	}
 
@@ -174,6 +178,16 @@ func TestConfig_Validate(t *testing.T) {
 				c.SlackBotToken = ""
 			},
 			wantErr: nil,
+		},
+		{
+			name:    "zero backend registry ttl",
+			mutate:  func(c *Config) { c.BackendRegistryTTL = 0 },
+			wantErr: ErrInvalidBackendRegistryTTL,
+		},
+		{
+			name:    "negative backend registry ttl",
+			mutate:  func(c *Config) { c.BackendRegistryTTL = -time.Second },
+			wantErr: ErrInvalidBackendRegistryTTL,
 		},
 	}
 
