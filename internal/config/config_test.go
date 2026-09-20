@@ -9,7 +9,6 @@ import (
 
 func setRequiredEnv(t *testing.T) {
 	t.Setenv("GROUP_LABEL", "application/name")
-	t.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 }
 
 func TestLoad_Defaults(t *testing.T) {
@@ -20,9 +19,6 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.Backend != "slack" {
-		t.Errorf("Backend = %q, want slack", cfg.Backend)
-	}
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want :8080", cfg.ListenAddr)
 	}
@@ -71,36 +67,20 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	tests := []struct {
-		name     string
-		missing  string
-		setOther func(t *testing.T)
-	}{
-		{name: "missing group label", missing: "GROUP_LABEL", setOther: func(t *testing.T) { t.Setenv("SLACK_BOT_TOKEN", "xoxb-test") }},
-		{name: "missing slack bot token", missing: "SLACK_BOT_TOKEN", setOther: func(t *testing.T) { t.Setenv("GROUP_LABEL", "application/name") }},
-	}
+	_ = os.Unsetenv("GROUP_LABEL")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_ = os.Unsetenv(tt.missing)
-			tt.setOther(t)
-
-			if _, err := Load(); err == nil {
-				t.Fatalf("Load() = nil error, want error for missing %s", tt.missing)
-			}
-		})
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() = nil error, want error for missing GROUP_LABEL")
 	}
 }
 
 func TestConfig_Validate(t *testing.T) {
 	base := func() Config {
 		return Config{
-			Backend:                     "slack",
 			GroupLabel:                  "application/name",
 			IdleWindow:                  30 * time.Second,
 			MaxWait:                     5 * time.Minute,
 			SessionTTL:                  45 * time.Minute,
-			SlackBotToken:               "xoxb-test",
 			LogFormat:                   "json",
 			DuplicateAction:             "drop",
 			BackendRegistryTTL:          90 * time.Second,
@@ -167,19 +147,6 @@ func TestConfig_Validate(t *testing.T) {
 				c.ListenAddr = ":8080"
 				c.PprofEnabled = true
 				c.PprofAddr = ":6060"
-			},
-			wantErr: nil,
-		},
-		{
-			name:    "missing slack bot token when backend is slack",
-			mutate:  func(c *Config) { c.SlackBotToken = "" },
-			wantErr: ErrMissingSlackBotToken,
-		},
-		{
-			name: "non-slack backend does not require slack bot token",
-			mutate: func(c *Config) {
-				c.Backend = "other"
-				c.SlackBotToken = ""
 			},
 			wantErr: nil,
 		},

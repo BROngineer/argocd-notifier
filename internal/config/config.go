@@ -18,14 +18,11 @@ var (
 	ErrLeaseDurationTooShort          = errors.New("LeaseDurationTooShort")
 	ErrRenewDeadlineTooShort          = errors.New("RenewDeadlineTooShort")
 	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
-	ErrBackendNotSupported            = errors.New("BackendNotSupported")
-	ErrMissingSlackBotToken           = errors.New("MissingSlackBotToken")
 	ErrInvalidBackendRegistryTTL      = errors.New("InvalidBackendRegistryTTL")
 	ErrInvalidRemoteBackendTimeout    = errors.New("InvalidRemoteBackendTimeout")
 )
 
 type Config struct {
-	Backend         string `envconfig:"backend" default:"slack"`
 	ListenAddr      string `envconfig:"listen_addr" default:":8080"`
 	EventsPath      string `envconfig:"events_path" default:"/events"`
 	IngestQueueSize int    `envconfig:"ingest_queue_size" default:"1024"`
@@ -37,10 +34,6 @@ type Config struct {
 	CombineTriggers bool          `envconfig:"combine_triggers" default:"true"`
 	SessionTTL      time.Duration `envconfig:"session_ttl" default:"45m"`
 	DuplicateAction string        `envconfig:"duplicate_action" default:"drop"`
-
-	SlackBotToken       string        `envconfig:"slack_bot_token"`
-	SlackRequestTimeout time.Duration `envconfig:"slack_request_timeout" default:"5s"`
-	SlackMaxRetries     int           `envconfig:"slack_max_retries" default:"3"`
 
 	// BackendRegistryTTL is how long a remote backend's registration stays
 	// valid without a heartbeat (a repeated register call) refreshing it.
@@ -105,9 +98,6 @@ func (c *Config) Validate() error {
 	case "drop", "thread":
 	default:
 		errs = append(errs, ErrInvalidDuplicateAction)
-	}
-	if c.Backend == "slack" && c.SlackBotToken == "" {
-		errs = append(errs, ErrMissingSlackBotToken)
 	}
 	if c.LeaderElectionEnabled {
 		if c.LeaderElectionNamespace == "" {

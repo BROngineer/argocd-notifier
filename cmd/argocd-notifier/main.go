@@ -20,11 +20,9 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/httpx"
 	"github.com/BROngineer/argocd-notifier/internal/leader"
 	"github.com/BROngineer/argocd-notifier/internal/logging"
-	"github.com/BROngineer/argocd-notifier/internal/notification"
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
 	"github.com/BROngineer/argocd-notifier/internal/registry"
 	"github.com/BROngineer/argocd-notifier/internal/remotebackend"
-	"github.com/BROngineer/argocd-notifier/internal/slack"
 )
 
 func main() {
@@ -36,31 +34,13 @@ func main() {
 
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat)
 
-	var notificationBackend notification.Backend
-
-	// Add case-branch here to wire new backend
-	switch cfg.Backend {
-	case "slack":
-		notificationBackend = slack.NewClient(cfg.SlackBotToken, cfg.SlackRequestTimeout, cfg.SlackMaxRetries)
-	default:
-		logger.Error("failed to setup notification backend", "backend", cfg.Backend, "error", config.ErrBackendNotSupported)
-		os.Exit(1)
-	}
-
-	duplicateAction := aggregator.DuplicateAction(cfg.DuplicateAction)
-	if err := aggregator.ValidateStaticBackend(duplicateAction, notificationBackend); err != nil {
-		logger.Error("configured backend does not support duplicate_action=thread", "backend", cfg.Backend, "error", err)
-		os.Exit(1)
-	}
-
 	backendRegistry := registry.NewRegistry(cfg.BackendRegistryTTL)
-	remoteResolver := remotebackend.NewResolver(backendRegistry, &http.Client{Timeout: cfg.RemoteBackendRequestTimeout})
-	resolver := aggregator.NewStaticResolver(cfg.Backend, notificationBackend, remoteResolver)
+	resolver := remotebackend.NewResolver(backendRegistry, &http.Client{Timeout: cfg.RemoteBackendRequestTimeout})
 
 	publisher := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{
 			SessionTTL:      cfg.SessionTTL,
-			DuplicateAction: duplicateAction,
+			DuplicateAction: aggregator.DuplicateAction(cfg.DuplicateAction),
 		},
 		resolver,
 		logger,
