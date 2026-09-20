@@ -1,6 +1,3 @@
-{{- if and (eq .Values.backend "slack") (not (or .Values.slack.botToken .Values.slack.existingSecret)) }}
-{{ fail "one of slack.botToken or slack.existingSecret must be set when backend=slack" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,8 +40,6 @@ spec:
               protocol: TCP
             {{- end }}
           env:
-            - name: BACKEND
-              value: {{ .Values.backend | quote }}
             - name: LISTEN_ADDR
               value: {{ .Values.server.listenAddr | quote }}
             - name: EVENTS_PATH
@@ -65,17 +60,10 @@ spec:
               value: {{ .Values.aggregation.sessionTTL | quote }}
             - name: DUPLICATE_ACTION
               value: {{ .Values.aggregation.duplicateAction | quote }}
-            {{- if eq .Values.backend "slack" }}
-            - name: SLACK_BOT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "argocd-notifier.slackSecretName" . }}
-                  key: {{ include "argocd-notifier.slackSecretKey" . }}
-            {{- end }}
-            - name: SLACK_REQUEST_TIMEOUT
-              value: {{ .Values.slack.requestTimeout | quote }}
-            - name: SLACK_MAX_RETRIES
-              value: {{ .Values.slack.maxRetries | quote }}
+            - name: BACKEND_REGISTRY_TTL
+              value: {{ .Values.backendRegistry.ttl | quote }}
+            - name: REMOTE_BACKEND_REQUEST_TIMEOUT
+              value: {{ .Values.backendRegistry.requestTimeout | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.logging.level | quote }}
             - name: LOG_FORMAT

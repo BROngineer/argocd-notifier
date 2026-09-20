@@ -30,10 +30,6 @@ affinity: {}
 # Extra env vars (e.g. secretKeyRef/valueFrom), same shape as a Pod's env: list.
 extraEnv: []
 
-# Which notification backend to wire up — see docs/adding-a-backend.md.
-# "slack" is the only one implemented today.
-backend: "slack"
-
 server:
   listenAddr: ":8080"
   eventsPath: "/events"
@@ -48,15 +44,13 @@ aggregation:
   sessionTTL: "45m"
   duplicateAction: "drop"
 
-slack:
-  # Either set botToken (rendered into a Secret this chart creates) or
-  # existingSecret (a Secret you manage yourself, e.g. via sealed-secrets
-  # or external-secrets) — exactly one is required.
-  botToken: ""
-  existingSecret: ""
-  existingSecretKey: "SLACK_BOT_TOKEN"
+# Every notification backend is a separate process that self-registers here
+# — see docs/adding-a-backend.md and docs/remote-backends.md.
+backendRegistry:
+  # How long a backend's registration stays valid without a heartbeat.
+  ttl: "90s"
+  # Timeout for each call this process makes to a registered backend.
   requestTimeout: "5s"
-  maxRetries: 3
 
 logging:
   level: "info"

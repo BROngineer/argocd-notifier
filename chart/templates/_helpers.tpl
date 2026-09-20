@@ -52,15 +52,3 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "argocd-notifier.leaderElectionNamespace" -}}
 {{- default .Release.Namespace .Values.leaderElection.namespace -}}
 {{- end -}}
-
-{{- define "argocd-notifier.slackSecretName" -}}
-{{- default (include "argocd-notifier.fullname" .) .Values.slack.existingSecret -}}
-{{- end -}}
-
-{{- define "argocd-notifier.slackSecretKey" -}}
-{{- if .Values.slack.existingSecret -}}
-{{- default "SLACK_BOT_TOKEN" .Values.slack.existingSecretKey -}}
-{{- else -}}
-SLACK_BOT_TOKEN
-{{- end -}}
-{{- end -}}
