@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -140,37 +139,27 @@ func (b *fakeNotifierBackend) Calls() []backendCall {
 	return append([]backendCall(nil), b.calls...)
 }
 
-// newTestPublisher wires backend as the compiled-in backend under the name
-// "slack" — matching baseEvent()'s Backend field — with no fallback for any
-// other name, unless the test needs one (see newTestPublisherWithFallback).
+// fakeResolver is a map-based BackendResolver — every backend, including
+// "slack", is resolved dynamically by name; there is no special-cased
+// compiled-in backend to test separately from any other name.
+type fakeResolver map[string]any
+
+func (f fakeResolver) Resolve(name string) (any, bool) {
+	b, ok := f[name]
+	return b, ok
+}
+
+// newTestPublisher resolves backend under the name "slack" — matching
+// baseEvent()'s Backend field — with no other names resolvable unless the
+// test needs one (see newTestPublisherMulti).
 func newTestPublisher(t *testing.T, cfg PublisherConfig, build *buildCounter, backend any, clock Clock) *SessionPublisher {
 	t.Helper()
-	return newTestPublisherWithFallback(t, cfg, build, backend, nil, clock)
+	return newTestPublisherMulti(t, cfg, build, fakeResolver{"slack": backend}, clock)
 }
 
-func newTestPublisherWithFallback(t *testing.T, cfg PublisherConfig, build *buildCounter, backend any, fallback BackendResolver, clock Clock) *SessionPublisher {
+func newTestPublisherMulti(t *testing.T, cfg PublisherConfig, build *buildCounter, backends fakeResolver, clock Clock) *SessionPublisher {
 	t.Helper()
-	resolver := NewStaticResolver("slack", backend, fallback)
-	return newSessionPublisherWithClock(cfg, build.build, resolver, testLogger(), clock)
-}
-
-func TestValidateStaticBackend_ThreadActionRequiresThreadReplier(t *testing.T) {
-	err := ValidateStaticBackend(DuplicateActionThread, &fakePostOnlyBackend{})
-	if !errors.Is(err, ErrBackendDoesNotSupportThreadReply) {
-		t.Fatalf("error = %v, want ErrBackendDoesNotSupportThreadReply", err)
-	}
-}
-
-func TestValidateStaticBackend_ThreadActionWithSupportingBackend(t *testing.T) {
-	if err := ValidateStaticBackend(DuplicateActionThread, &fakeBackend{}); err != nil {
-		t.Fatalf("ValidateStaticBackend() error = %v, want nil", err)
-	}
-}
-
-func TestValidateStaticBackend_DropActionNeverRequiresThreadReplier(t *testing.T) {
-	if err := ValidateStaticBackend(DuplicateActionDrop, &fakePostOnlyBackend{}); err != nil {
-		t.Fatalf("ValidateStaticBackend() error = %v, want nil", err)
-	}
+	return newSessionPublisherWithClock(cfg, build.build, backends, testLogger(), clock)
 }
 
 func TestSessionPublisher_FirstUpsertPosts(t *testing.T) {
@@ -463,8 +452,7 @@ func TestSessionPublisher_RoutesToDifferentBackendsByEventField(t *testing.T) {
 	build := &buildCounter{}
 	slackBackend := &fakeBackend{}
 	otherBackend := &fakeBackend{}
-	fallback := NewStaticResolver("other", otherBackend, nil)
-	sp := newTestPublisherWithFallback(t, PublisherConfig{SessionTTL: time.Hour}, build, slackBackend, fallback, newFakeClock())
+	sp := newTestPublisherMulti(t, PublisherConfig{SessionTTL: time.Hour}, build, fakeResolver{"slack": slackBackend, "other": otherBackend}, newFakeClock())
 
 	slackEvent := baseEvent()
 	slackEvent.AppName = "app-slack"

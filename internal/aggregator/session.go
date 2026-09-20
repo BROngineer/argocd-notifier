@@ -23,8 +23,6 @@ const (
 	DuplicateActionThread DuplicateAction = "thread"
 )
 
-var ErrBackendDoesNotSupportThreadReply = errors.New("BackendDoesNotSupportThreadReply")
-
 // RefKey identifies one tracked message: a session can route different
 // apps to different (backend, recipient) pairs, and two different backends
 // may legitimately use the same recipient string to mean different things

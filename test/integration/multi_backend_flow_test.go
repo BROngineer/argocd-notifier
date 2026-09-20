@@ -18,7 +18,6 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
 	"github.com/BROngineer/argocd-notifier/internal/registry"
 	"github.com/BROngineer/argocd-notifier/internal/remotebackend"
-	"github.com/BROngineer/argocd-notifier/internal/slack"
 )
 
 type remoteCall struct {
@@ -62,14 +61,12 @@ func startMockRemoteBackend(t *testing.T) (baseURL string, getCalls func() []rem
 
 // newMultiBackendPipeline wires the same shape main.go does: one server mux
 // exposing /events and /v1/backends/register, an aggregator.SessionPublisher
-// whose resolver falls back to a registry-backed remotebackend.Resolver for
-// any backend name other than the compiled-in "slack" one.
-func newMultiBackendPipeline(t *testing.T, slackBaseURL string) (serverURL string) {
-	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL))
-
+// whose resolver is a registry-backed remotebackend.Resolver — every
+// backend name, with no special-cased compiled-in one, resolves the same
+// way: a live registry lookup.
+func newMultiBackendPipeline(t *testing.T) (serverURL string) {
 	reg := registry.NewRegistry(time.Minute)
-	remoteResolver := remotebackend.NewResolver(reg, http.DefaultClient)
-	resolver := aggregator.NewStaticResolver("slack", slackClient, remoteResolver)
+	resolver := remotebackend.NewResolver(reg, http.DefaultClient)
 
 	publisher := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{SessionTTL: time.Hour, DuplicateAction: aggregator.DuplicateActionDrop},
@@ -113,11 +110,12 @@ func registerRemoteBackend(t *testing.T, serverURL, name, baseURL string) {
 }
 
 func TestMultiBackendFlow_RoutesEventsToTheirOwnBackend(t *testing.T) {
-	slackBaseURL, getSlackCalls := startMockSlack(t)
-	remoteBaseURL, getRemoteCalls := startMockRemoteBackend(t)
+	slackBaseURL, getSlackCalls := startMockRemoteBackend(t)
+	customBaseURL, getCustomCalls := startMockRemoteBackend(t)
 
-	serverURL := newMultiBackendPipeline(t, slackBaseURL)
-	registerRemoteBackend(t, serverURL, "custom", remoteBaseURL)
+	serverURL := newMultiBackendPipeline(t)
+	registerRemoteBackend(t, serverURL, "slack", slackBaseURL)
+	registerRemoteBackend(t, serverURL, "custom", customBaseURL)
 
 	postEvent(t, serverURL+"/events",
 		`{"groupKey":"tatooine","appName":"app-slack","trigger":"on-deployed","revision":"rev-1","recipient":"chan1","backend":"slack"}`)
@@ -125,21 +123,20 @@ func TestMultiBackendFlow_RoutesEventsToTheirOwnBackend(t *testing.T) {
 		`{"groupKey":"tatooine","appName":"app-custom","trigger":"on-deployed","revision":"rev-1","recipient":"chan1","backend":"custom"}`)
 
 	deadline := time.Now().Add(2 * time.Second)
-	for len(getSlackCalls()) < 1 || len(getRemoteCalls()) < 1 {
-
+	for len(getSlackCalls()) < 1 || len(getCustomCalls()) < 1 {
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out: slack calls = %+v, remote calls = %+v", getSlackCalls(), getRemoteCalls())
+			t.Fatalf("timed out: slack calls = %+v, custom calls = %+v", getSlackCalls(), getCustomCalls())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	slackCalls := getSlackCalls()
-	if len(slackCalls) != 1 || slackCalls[0].path != "/chat.postMessage" {
-		t.Fatalf("expected exactly 1 slack postMessage call, got %+v", slackCalls)
+	if len(slackCalls) != 1 || len(slackCalls[0].appNames) != 1 || slackCalls[0].appNames[0] != "app-slack" {
+		t.Fatalf("expected exactly 1 notify call for app-slack, got %+v", slackCalls)
 	}
 
-	remoteCalls := getRemoteCalls()
-	if len(remoteCalls) != 1 || len(remoteCalls[0].appNames) != 1 || remoteCalls[0].appNames[0] != "app-custom" {
-		t.Fatalf("expected exactly 1 remote notify call for app-custom, got %+v", remoteCalls)
+	customCalls := getCustomCalls()
+	if len(customCalls) != 1 || len(customCalls[0].appNames) != 1 || customCalls[0].appNames[0] != "app-custom" {
+		t.Fatalf("expected exactly 1 notify call for app-custom, got %+v", customCalls)
 	}
 }
