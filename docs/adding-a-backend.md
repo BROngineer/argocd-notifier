@@ -1,6 +1,6 @@
 # Adding a notification backend
 
-A notification backend is a **separate process, in any language**. It self-registers with argocd-notifier's core over HTTP, then receives pushed notifications over HTTP. There is no Go interface to implement and no PR against this repo required — see `docs/remote-backends.md` for the full design rationale. This doc is the practical how-to; there is no reference implementation shipped yet (Phase 5 of `docs/remote-backends.md` adds one, wrapping `internal/slack`'s existing rendering/client code behind this same contract).
+A notification backend is a **separate process, in any language**. It self-registers with argocd-notifier's core over HTTP, then receives pushed notifications over HTTP. There is no Go interface to implement and no PR against this repo required — see `docs/remote-backends.md` for the full design rationale. This doc is the practical how-to; `cmd/slack-backend` (backed by `internal/slackbackend`) is a full reference implementation wrapping `internal/slack`'s rendering/client code behind this same contract — read it alongside this doc if you're writing a Go backend.
 
 ## 1. Register, and keep registering (heartbeat)
 
@@ -42,6 +42,6 @@ The core only calls this when the operator has `DUPLICATE_ACTION=thread` configu
 
 ## Testing
 
-- Round-trip your `/notify` and `/thread-reply` handlers against `api/backendapi`'s generated request/response shapes (if you're writing Go, `oapi-codegen`'s output in `api/backendapi/backendapi.gen.go` gives you both server and client types for this — see `internal/remotebackend`'s tests for the request/response shapes the core actually sends).
-- Verify registering twice with the same `name` doesn't error (heartbeat) and updates `baseURL`/`supportsThreadReply` if they changed.
+- Round-trip your `/notify` and `/thread-reply` handlers against `api/backendapi`'s generated request/response shapes (if you're writing Go, `oapi-codegen`'s output in `api/backendapi/backendapi.gen.go` gives you both server and client types for this — see `internal/remotebackend`'s tests for the request/response shapes the core actually sends, and `internal/slackbackend/handler_test.go` for a worked example).
+- Verify registering twice with the same `name` doesn't error (heartbeat) and updates `baseURL`/`supportsThreadReply` if they changed — see `internal/slackbackend/registrar_test.go`.
 - If you support thread replies, verify the core's request reaches you only when you're currently registered with `supportsThreadReply: true`.
