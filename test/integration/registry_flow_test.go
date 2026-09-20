@@ -12,19 +12,44 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/registry"
 )
 
-// newServerMux builds the same mux shape cmd/argocd-notifier/main.go wires:
-// the events receiver and the backend registration endpoint sharing one mux,
-// so a route added by core.HandlerFromMux can't silently shadow /events.
+// coreServer implements core.ServerInterface the same way
+// cmd/argocd-notifier/server.go does — pure delegation to already-tested
+// handlers. Mirrored here rather than imported, since package main can't be.
+type coreServer struct {
+	events   http.Handler
+	registry *registry.Handler
+	isReady  func() bool
+}
+
+func (s *coreServer) SubmitEvent(w http.ResponseWriter, r *http.Request) {
+	s.events.ServeHTTP(w, r)
+}
+
+func (s *coreServer) Healthz(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *coreServer) Readyz(w http.ResponseWriter, _ *http.Request) {
+	if s.isReady == nil || s.isReady() {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+}
+
+func (s *coreServer) RegisterBackend(w http.ResponseWriter, r *http.Request) {
+	s.registry.RegisterBackend(w, r)
+}
+
+// newServerMux builds the same composition cmd/argocd-notifier/main.go
+// does: every endpoint routed through one generated-server-driven handler,
+// so a route can't silently shadow /events the way a hand-built mux could.
 func newServerMux(t *testing.T) (serverURL string, reg *registry.Registry) {
 	handler := receiver.NewHandler(32, testLogger())
 	reg = registry.NewRegistry(time.Minute)
 	registryHandler := registry.NewHandler(reg, testLogger())
 
-	mux := http.NewServeMux()
-	mux.Handle("/events", handler)
-	core.HandlerFromMux(registryHandler, mux)
-
-	server := httptest.NewServer(mux)
+	server := httptest.NewServer(core.Handler(&coreServer{events: handler, registry: registryHandler}))
 	t.Cleanup(server.Close)
 
 	return server.URL, reg

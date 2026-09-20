@@ -21,6 +21,34 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// Event Mirrors internal/event.Event exactly — this is the wire contract with ArgoCD's notifications-engine webhook body, not a type minted for this spec, so field names/shape must stay in sync with the webhook template on the ArgoCD side (see docs/setup.md).
+type Event struct {
+	AppName   string  `json:"appName"`
+	ArgocdUrl *string `json:"argocdUrl,omitempty"`
+
+	// Backend Which registered backend this event routes to. No default — required.
+	Backend string `json:"backend"`
+
+	// GroupKey Value of the configured GROUP_LABEL — rollouts sharing this are aggregated together.
+	GroupKey         string             `json:"groupKey"`
+	HealthStatus     *string            `json:"healthStatus,omitempty"`
+	Images           *[]string          `json:"images,omitempty"`
+	InitiatedBy      *string            `json:"initiatedBy,omitempty"`
+	Labels           *map[string]string `json:"labels,omitempty"`
+	OperationMessage *string            `json:"operationMessage,omitempty"`
+
+	// Recipient Raw .recipient value from the subscribe annotation — semicolon-joined channels/targets.
+	Recipient  string  `json:"recipient"`
+	RepoURL    *string `json:"repoURL,omitempty"`
+	Revision   string  `json:"revision"`
+	SyncPhase  *string `json:"syncPhase,omitempty"`
+	SyncStatus *string `json:"syncStatus,omitempty"`
+	Target     *string `json:"target,omitempty"`
+
+	// Trigger The ArgoCD notification trigger name, e.g. on-deployed.
+	Trigger string `json:"trigger"`
+}
+
 // RegisterBackendRequest defines model for RegisterBackendRequest.
 type RegisterBackendRequest struct {
 	// BaseURL Base address the core calls back on. The core appends the fixed suffixes /notify and /thread-reply itself — do not include them here, and do not include a trailing slash.
@@ -32,6 +60,9 @@ type RegisterBackendRequest struct {
 	// SupportsThreadReply Whether this backend serves POST {baseURL}/thread-reply. If false, the core will not attempt duplicateAction=thread against this backend.
 	SupportsThreadReply bool `json:"supportsThreadReply"`
 }
+
+// SubmitEventJSONRequestBody defines body for SubmitEvent for application/json ContentType.
+type SubmitEventJSONRequestBody = Event
 
 // RegisterBackendJSONRequestBody defines body for RegisterBackend for application/json ContentType.
 type RegisterBackendJSONRequestBody = RegisterBackendRequest
@@ -110,6 +141,30 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// SubmitEventWithBody Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /events (the `SubmitEvent` operationId).
+	SubmitEventWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SubmitEvent Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /events (the `SubmitEvent` operationId).
+	SubmitEvent(ctx context.Context, body SubmitEventJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Healthz Liveness probe. Always 200 if the process is up.
+	//
+	// Corresponds with GET /healthz (the `Healthz` operationId).
+	Healthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Readyz Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+	//
+	// Corresponds with GET /readyz (the `Readyz` operationId).
+	Readyz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RegisterBackendWithBody Register a remote notification backend, or refresh its heartbeat — calling this again with the same name refreshes it; there is no separate heartbeat endpoint.
 	//
 	// Takes any type of body and a specified content type.
@@ -123,6 +178,70 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/backends/register (the `RegisterBackend` operationId).
 	RegisterBackend(ctx context.Context, body RegisterBackendJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// SubmitEventWithBody Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /events (the `SubmitEvent` operationId).
+func (c *Client) SubmitEventWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubmitEventRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SubmitEvent Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /events (the `SubmitEvent` operationId).
+func (c *Client) SubmitEvent(ctx context.Context, body SubmitEventJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubmitEventRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Healthz Liveness probe. Always 200 if the process is up.
+//
+// Corresponds with GET /healthz (the `Healthz` operationId).
+func (c *Client) Healthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHealthzRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Readyz Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+//
+// Corresponds with GET /readyz (the `Readyz` operationId).
+func (c *Client) Readyz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReadyzRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // RegisterBackendWithBody Register a remote notification backend, or refresh its heartbeat — calling this again with the same name refreshes it; there is no separate heartbeat endpoint.
@@ -157,6 +276,100 @@ func (c *Client) RegisterBackend(ctx context.Context, body RegisterBackendJSONRe
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewSubmitEventRequest calls the generic SubmitEvent builder with application/json body
+func NewSubmitEventRequest(server string, body SubmitEventJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSubmitEventRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSubmitEventRequestWithBody constructs an http.Request for the SubmitEvent method, with any body, and a specified content type
+func NewSubmitEventRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/events")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewHealthzRequest constructs an http.Request for the Healthz method
+func NewHealthzRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/healthz")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReadyzRequest constructs an http.Request for the Readyz method
+func NewReadyzRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/readyz")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewRegisterBackendRequest calls the generic RegisterBackend builder with application/json body
@@ -243,6 +456,34 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// SubmitEventWithBodyWithResponse Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /events (the `SubmitEvent` operationId).
+	SubmitEventWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubmitEventResponse, error)
+
+	// SubmitEventWithResponse Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /events (the `SubmitEvent` operationId).
+	SubmitEventWithResponse(ctx context.Context, body SubmitEventJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitEventResponse, error)
+
+	// HealthzWithResponse Liveness probe. Always 200 if the process is up.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /healthz (the `Healthz` operationId).
+	HealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthzResponse, error)
+
+	// ReadyzWithResponse Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /readyz (the `Readyz` operationId).
+	ReadyzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReadyzResponse, error)
+
 	// RegisterBackendWithBodyWithResponse Register a remote notification backend, or refresh its heartbeat — calling this again with the same name refreshes it; there is no separate heartbeat endpoint.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -256,6 +497,108 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/backends/register (the `RegisterBackend` operationId).
 	RegisterBackendWithResponse(ctx context.Context, body RegisterBackendJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterBackendResponse, error)
+}
+
+type SubmitEventResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r SubmitEventResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SubmitEventResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SubmitEventResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SubmitEventResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type HealthzResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r HealthzResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r HealthzResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r HealthzResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r HealthzResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReadyzResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r ReadyzResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReadyzResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReadyzResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReadyzResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type RegisterBackendResponse struct {
@@ -292,6 +635,58 @@ func (r RegisterBackendResponse) ContentType() string {
 	return ""
 }
 
+// SubmitEventWithBodyWithResponse Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /events (the `SubmitEvent` operationId).
+func (c *ClientWithResponses) SubmitEventWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubmitEventResponse, error) {
+	rsp, err := c.SubmitEventWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubmitEventResponse(rsp)
+}
+
+// SubmitEventWithResponse Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /events (the `SubmitEvent` operationId).
+func (c *ClientWithResponses) SubmitEventWithResponse(ctx context.Context, body SubmitEventJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitEventResponse, error) {
+	rsp, err := c.SubmitEvent(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubmitEventResponse(rsp)
+}
+
+// HealthzWithResponse Liveness probe. Always 200 if the process is up.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /healthz (the `Healthz` operationId).
+func (c *ClientWithResponses) HealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthzResponse, error) {
+	rsp, err := c.Healthz(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHealthzResponse(rsp)
+}
+
+// ReadyzWithResponse Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /readyz (the `Readyz` operationId).
+func (c *ClientWithResponses) ReadyzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReadyzResponse, error) {
+	rsp, err := c.Readyz(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReadyzResponse(rsp)
+}
+
 // RegisterBackendWithBodyWithResponse Register a remote notification backend, or refresh its heartbeat — calling this again with the same name refreshes it; there is no separate heartbeat endpoint.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -318,6 +713,54 @@ func (c *ClientWithResponses) RegisterBackendWithResponse(ctx context.Context, b
 	return ParseRegisterBackendResponse(rsp)
 }
 
+// ParseSubmitEventResponse parses an HTTP response from a SubmitEventWithResponse call
+func ParseSubmitEventResponse(rsp *http.Response) (*SubmitEventResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SubmitEventResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseHealthzResponse parses an HTTP response from a HealthzWithResponse call
+func ParseHealthzResponse(rsp *http.Response) (*HealthzResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &HealthzResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseReadyzResponse parses an HTTP response from a ReadyzWithResponse call
+func ParseReadyzResponse(rsp *http.Response) (*ReadyzResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReadyzResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
 // ParseRegisterBackendResponse parses an HTTP response from a RegisterBackendWithResponse call
 func ParseRegisterBackendResponse(rsp *http.Response) (*RegisterBackendResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -336,6 +779,15 @@ func ParseRegisterBackendResponse(rsp *http.Response) (*RegisterBackendResponse,
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// SubmitEvent Submit one ArgoCD Application trigger event. Decoded, validated, and enqueued for debounced aggregation — never blocks on downstream backend delivery, so ArgoCD's synchronous webhook call returns fast.
+	// (POST /events)
+	SubmitEvent(w http.ResponseWriter, r *http.Request)
+	// Healthz Liveness probe. Always 200 if the process is up.
+	// (GET /healthz)
+	Healthz(w http.ResponseWriter, r *http.Request)
+	// Readyz Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+	// (GET /readyz)
+	Readyz(w http.ResponseWriter, r *http.Request)
 	// RegisterBackend Register a remote notification backend, or refresh its heartbeat — calling this again with the same name refreshes it; there is no separate heartbeat endpoint.
 	// (POST /v1/backends/register)
 	RegisterBackend(w http.ResponseWriter, r *http.Request)
@@ -349,6 +801,48 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// SubmitEvent operation middleware
+func (siw *ServerInterfaceWrapper) SubmitEvent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitEvent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Healthz operation middleware
+func (siw *ServerInterfaceWrapper) Healthz(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Healthz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Readyz operation middleware
+func (siw *ServerInterfaceWrapper) Readyz(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Readyz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // RegisterBackend operation middleware
 func (siw *ServerInterfaceWrapper) RegisterBackend(w http.ResponseWriter, r *http.Request) {
@@ -484,6 +978,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/events", wrapper.SubmitEvent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.Healthz)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/readyz", wrapper.Readyz)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/backends/register", wrapper.RegisterBackend)
 
 	return m
@@ -494,20 +991,31 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"dJTfbhs3E8VfZcDvA5IAslZpcqWiF3Z6UQMtajguelEUyIic1TLhcpiZWcWKIaAP0SfskxTkWv6b3hFL",
-	"cnjmzG/PjfM8Fs6UTd36xqkfaMS2vKRtVCM5Q/+JcrikzxOp1Z0iXEgsUju3QaXfLn+uy0DqJRaLnN3a",
-	"naESYAhCqmADgWch8JiSwgb9J+C8hKvjdyyFcpgP9vGaAujU14VCl9livwfMATobhDCcCJW0h2hKqYd/",
-	"/vobAkNmg5h9mgLVMiMMJLRo157sIphgTDFvQRPqsHQLZ/tCbu3UJOatOyxcxpGed1UFb2ZLoJ4A2lXz",
-	"QHgyAmN4OaL5geZOPtwe/QB9pBQAZcs+nLSGIgnQtQl6U+iFxyqPxyrqVLb87sfb0q++qU6nUlhMr5of",
-	"l9WO52J/H8gGErAh6p1qJdmRwsWv76/g5nZ6h0e+LuG8hx6T0uJ+cF9iSs1ENKOxGISppOjR6NTX536Y",
-	"KwBuMWa1R28+6GDDnAizOxwWTujzFIWCW/8xu724o+nbDf55V4Y3H8mbO9QyMff8vPf3tc0Am/1T01/o",
-	"3FAR9qS6hHeTCGVLe/C8I7l3StovIFgrft+coOuoVic0YA4nwilRgG6e0wK6gTDZ8HVmrqu691+Bcigc",
-	"KyMotUIhbxQqKiPvCGI2ns3SQh5iBoSERgJlwDoBzp7uxvBC4aerq4t5iAJRQahHbyxzyQ1BP6W0hy1l",
-	"EjQKJ/PRkyBxR7lNIlqqHj6FsblyenHuFq7aMNv4erlaripwXChjiW7t3ixXyzdu4Qra0CKg273ubj3T",
-	"Tm5zo24UnhOj5kVz8Ty49dNkcTMIpHbGoUHsORvldhPLDFnk3H1UzvchVVf/F+rd2v2vu0+xbt7V7j/y",
-	"6/AYPJOJ2gctnHVOtO9Wb5/jdCxHAV6ywEAotiG06r+QDhReLatNb1er55d/wdSzjFSRajKWjX+dxhFl",
-	"/6A6IAiNbATzVObOj0AugOX4Xs2+BypqBNZorWw2mNpvCF+iDY0drVHV8uqoVyFag1qoYpQZlAoKGj0o",
-	"e2S36j0c/h0A",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

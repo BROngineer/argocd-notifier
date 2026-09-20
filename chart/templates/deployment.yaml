@@ -42,8 +42,6 @@ spec:
           env:
             - name: LISTEN_ADDR
               value: {{ .Values.server.listenAddr | quote }}
-            - name: EVENTS_PATH
-              value: {{ .Values.server.eventsPath | quote }}
             - name: INGEST_QUEUE_SIZE
               value: {{ .Values.server.ingestQueueSize | quote }}
             - name: WORKER_COUNT

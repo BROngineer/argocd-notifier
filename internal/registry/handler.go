@@ -19,8 +19,9 @@ func NewHandler(reg *Registry, logger *slog.Logger) *Handler {
 	return &Handler{reg: reg, logger: logger}
 }
 
-var _ core.ServerInterface = (*Handler)(nil)
-
+// RegisterBackend is one of core.ServerInterface's methods — the full
+// interface is implemented by cmd/argocd-notifier's server type, which
+// composes this along with the other core endpoints' handlers.
 func (h *Handler) RegisterBackend(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 

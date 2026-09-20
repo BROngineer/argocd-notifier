@@ -24,7 +24,6 @@ var (
 
 type Config struct {
 	ListenAddr      string `envconfig:"listen_addr" default:":8080"`
-	EventsPath      string `envconfig:"events_path" default:"/events"`
 	IngestQueueSize int    `envconfig:"ingest_queue_size" default:"1024"`
 	WorkerCount     int    `envconfig:"worker_count" default:"4"`
 

@@ -69,15 +69,13 @@ func main() {
 		isReady = startLeaderElection(ctx, cfg, logger)
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle(cfg.EventsPath, handler)
-	mux.HandleFunc("/healthz", httpx.HealthzHandler())
-	mux.HandleFunc("/readyz", httpx.ReadyzHandler(isReady))
-	core.HandlerFromMux(registryHandler, mux)
-
 	srv := &http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           httpx.Middleware(logger)(mux),
+		Addr: cfg.ListenAddr,
+		Handler: httpx.Middleware(logger)(core.Handler(&server{
+			events:   handler,
+			registry: registryHandler,
+			isReady:  isReady,
+		})),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

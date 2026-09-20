@@ -22,9 +22,6 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want :8080", cfg.ListenAddr)
 	}
-	if cfg.EventsPath != "/events" {
-		t.Errorf("EventsPath = %q, want /events", cfg.EventsPath)
-	}
 	if cfg.IdleWindow != 30*time.Second {
 		t.Errorf("IdleWindow = %v, want 30s", cfg.IdleWindow)
 	}

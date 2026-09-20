@@ -87,11 +87,7 @@ func newMultiBackendPipeline(t *testing.T) (serverURL string) {
 	t.Cleanup(cancel)
 	receiver.RunWorkers(ctx, eventsHandler.Events(), 2, engine.Ingest)
 
-	mux := http.NewServeMux()
-	mux.Handle("/events", eventsHandler)
-	core.HandlerFromMux(registryHandler, mux)
-
-	server := httptest.NewServer(mux)
+	server := httptest.NewServer(core.Handler(&coreServer{events: eventsHandler, registry: registryHandler}))
 	t.Cleanup(server.Close)
 
 	return server.URL
