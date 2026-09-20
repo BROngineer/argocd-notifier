@@ -27,10 +27,8 @@ func TestSlackBackendFlow_RegistersAndDeliversViaRemoteBackendAdapter(t *testing
 
 	// Core side: just the registry + its registration endpoint.
 	reg := registry.NewRegistry(time.Minute)
-	coreMux := http.NewServeMux()
-	core.HandlerFromMux(registry.NewHandler(reg, testLogger()), coreMux)
-	coreServer := httptest.NewServer(coreMux)
-	t.Cleanup(coreServer.Close)
+	coreHTTPServer := httptest.NewServer(core.Handler(&coreServer{registry: registry.NewHandler(reg, testLogger())}))
+	t.Cleanup(coreHTTPServer.Close)
 
 	// Standalone backend side: what cmd/slack-backend/main.go wires.
 	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL))
@@ -40,7 +38,7 @@ func TestSlackBackendFlow_RegistersAndDeliversViaRemoteBackendAdapter(t *testing
 	t.Cleanup(backendServer.Close)
 
 	registrar, err := slackbackend.NewRegistrar(
-		coreServer.URL, "slack", backendServer.URL, true, 20*time.Millisecond, http.DefaultClient, testLogger())
+		coreHTTPServer.URL, "slack", backendServer.URL, true, 20*time.Millisecond, http.DefaultClient, testLogger())
 	if err != nil {
 		t.Fatalf("NewRegistrar() error = %v", err)
 	}

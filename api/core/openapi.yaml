@@ -2,13 +2,52 @@ openapi: 3.0.3
 info:
   title: argocd-notifier core API
   description: >-
-    Served by argocd-notifier's core process. Currently covers backend
-    registration; the existing hand-rolled /events, /healthz, and /readyz
-    endpoints are expected to move into this spec in a later phase, once
-    the core's HTTP server is refactored to be fully generated-server-driven.
+    Served by argocd-notifier's core process — every endpoint it exposes,
+    generated-server-driven end to end (see docs/remote-backends.md).
   version: "1.0.0"
 
 paths:
+  /events:
+    post:
+      operationId: submitEvent
+      summary: >-
+        Submit one ArgoCD Application trigger event. Decoded, validated, and
+        enqueued for debounced aggregation — never blocks on downstream
+        backend delivery, so ArgoCD's synchronous webhook call returns fast.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Event"
+      responses:
+        "202":
+          description: Accepted and enqueued.
+        "400":
+          description: Malformed JSON, or a required field is missing.
+        "503":
+          description: Ingest queue is full; retry with backoff.
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness probe. Always 200 if the process is up.
+      responses:
+        "200":
+          description: Alive.
+
+  /readyz:
+    get:
+      operationId: readyz
+      summary: >-
+        Readiness probe. With leader election enabled, only the current
+        leader reports ready — see docs/design.md#high-availability.
+      responses:
+        "200":
+          description: Ready to receive traffic.
+        "503":
+          description: Not ready (e.g. not the current leader).
+
   /v1/backends/register:
     post:
       operationId: registerBackend
@@ -30,6 +69,56 @@ paths:
 
 components:
   schemas:
+    Event:
+      type: object
+      description: >-
+        Mirrors internal/event.Event exactly — this is the wire contract
+        with ArgoCD's notifications-engine webhook body, not a type minted
+        for this spec, so field names/shape must stay in sync with the
+        webhook template on the ArgoCD side (see docs/setup.md).
+      required: [groupKey, appName, trigger, revision, recipient, backend]
+      properties:
+        groupKey:
+          type: string
+          description: Value of the configured GROUP_LABEL — rollouts sharing this are aggregated together.
+        appName:
+          type: string
+        trigger:
+          type: string
+          description: The ArgoCD notification trigger name, e.g. on-deployed.
+        revision:
+          type: string
+        recipient:
+          type: string
+          description: Raw .recipient value from the subscribe annotation — semicolon-joined channels/targets.
+        backend:
+          type: string
+          description: Which registered backend this event routes to. No default — required.
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        target:
+          type: string
+        healthStatus:
+          type: string
+        syncPhase:
+          type: string
+        syncStatus:
+          type: string
+        operationMessage:
+          type: string
+        repoURL:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        initiatedBy:
+          type: string
+        argocdUrl:
+          type: string
+
     RegisterBackendRequest:
       type: object
       required: [name, baseURL, supportsThreadReply]
