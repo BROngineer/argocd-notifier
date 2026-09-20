@@ -19,7 +19,7 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-const validEventBody = `{"groupKey":"tatooine","appName":"tatooine-dev","trigger":"on-deployed","revision":"rev-1","recipient":"chan1"}`
+const validEventBody = `{"groupKey":"tatooine","appName":"tatooine-dev","trigger":"on-deployed","revision":"rev-1","recipient":"chan1","backend":"slack"}`
 
 func TestHandler_MalformedJSON(t *testing.T) {
 	h := NewHandler(1, testLogger())

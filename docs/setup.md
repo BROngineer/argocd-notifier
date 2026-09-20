@@ -72,6 +72,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
             "labels": {{.app.metadata.labels | toJson}},
             "appName": {{.app.metadata.name | toJson}},
             "target": {{index .app.metadata.labels "application/target" | default "" | toJson}},
+            "backend": {{index .app.metadata.labels "application/backend" | toJson}},
             "trigger": "on-deployed",
             "healthStatus": {{.app.status.health.status | toJson}},
             "syncPhase": {{.app.status.operationState.phase | toJson}},
@@ -97,6 +98,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
             "labels": {{.app.metadata.labels | toJson}},
             "appName": {{.app.metadata.name | toJson}},
             "target": {{index .app.metadata.labels "application/target" | default "" | toJson}},
+            "backend": {{index .app.metadata.labels "application/backend" | toJson}},
             "trigger": "on-sync-failed",
             "healthStatus": {{.app.status.health.status | toJson}},
             "syncPhase": {{.app.status.operationState.phase | toJson}},
@@ -119,6 +121,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
             "labels": {{.app.metadata.labels | toJson}},
             "appName": {{.app.metadata.name | toJson}},
             "target": {{index .app.metadata.labels "application/target" | default "" | toJson}},
+            "backend": {{index .app.metadata.labels "application/backend" | toJson}},
             "trigger": "on-health-degraded",
             "healthStatus": {{.app.status.health.status | toJson}},
             "argocdUrl": {{.context.argocdUrl | toJson}},
@@ -131,6 +134,7 @@ Notes on this template shape:
 - **`"trigger"` is a literal string per template**, not derived — each ArgoCD template name maps to exactly one trigger condition, so there's no need (and no clean way) to compute it dynamically from `.app`.
 - **`{{.recipient}}`** carries the subscribe annotation's value straight through — this is how the aggregator knows which Slack channel(s) to post to, reusing whatever channel config you already have (see step 3).
 - **`application/name`** is just an example label key — replace it with whatever label you actually use to group an app across clusters/environments, and set argocd-notifier's `GROUP_LABEL` to the same key.
+- **`"backend"`** has no fallback — argocd-notifier rejects an event with no `backend` value (`ErrMissingBackend`), so every Application must carry the `application/backend` label (e.g. `slack`, or a separately registered remote backend — see `docs/remote-backends.md`).
 - To wire up the remaining 5 triggers (`on-created`, `on-deleted`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`), repeat this pattern against `template.app-created`, `template.app-deleted`, etc. (or whatever your catalog names them), changing only the `"trigger"` literal and dropping fields that don't apply (e.g. `on-deleted` has no useful health/sync status).
 - If you don't already have `trigger.on-*` definitions (no default catalog loaded), you also need those — see [ArgoCD's notification triggers docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/triggers/) for the conditions; argocd-notifier doesn't care what condition fired a trigger, only its name and the fields in the body above.
 

@@ -12,6 +12,7 @@ func validEvent() Event {
 		Trigger:   "on-deployed",
 		Revision:  "abc123",
 		Recipient: "test1234asdf",
+		Backend:   "slack",
 	}
 }
 
@@ -27,6 +28,7 @@ func TestEvent_Validate(t *testing.T) {
 		{name: "missing trigger", mutate: func(e *Event) { e.Trigger = "" }, wantErr: ErrMissingTrigger},
 		{name: "missing revision", mutate: func(e *Event) { e.Revision = "" }, wantErr: ErrMissingRevision},
 		{name: "missing recipient", mutate: func(e *Event) { e.Recipient = "" }, wantErr: ErrMissingRecipient},
+		{name: "missing backend", mutate: func(e *Event) { e.Backend = "" }, wantErr: ErrMissingBackend},
 	}
 
 	for _, tt := range tests {
@@ -55,6 +57,7 @@ func TestEvent_Validate_MultipleMissingFields(t *testing.T) {
 		ErrMissingTrigger,
 		ErrMissingRevision,
 		ErrMissingRecipient,
+		ErrMissingBackend,
 	} {
 		if !errors.Is(err, want) {
 			t.Errorf("Validate() = %v, want errors.Is(_, %v)", err, want)
