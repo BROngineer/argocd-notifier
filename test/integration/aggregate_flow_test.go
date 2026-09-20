@@ -77,15 +77,13 @@ func waitForCallCount(t *testing.T, getCalls func() []slackCall, want int) []sla
 
 func newPipeline(t *testing.T, slackBaseURL string) (receiverURL string) {
 	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL))
+	resolver := aggregator.NewStaticResolver("slack", slackClient, nil)
 
-	publisher, err := aggregator.NewSessionPublisher(
+	publisher := aggregator.NewSessionPublisher(
 		aggregator.PublisherConfig{SessionTTL: time.Hour, DuplicateAction: aggregator.DuplicateActionDrop},
-		slackClient,
+		resolver,
 		testLogger(),
 	)
-	if err != nil {
-		t.Fatalf("NewSessionPublisher() error = %v", err)
-	}
 
 	engine := aggregator.NewEngine(
 		aggregator.Config{IdleWindow: 50 * time.Millisecond, MaxWait: time.Second, CombineTriggers: true},
