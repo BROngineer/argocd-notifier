@@ -22,8 +22,9 @@ type Config struct {
 }
 
 type Elector struct {
-	le      *leaderelection.LeaderElector
-	leading atomic.Bool
+	le            *leaderelection.LeaderElector
+	leading       atomic.Bool
+	currentLeader atomic.Pointer[string]
 }
 
 func New(client kubernetes.Interface, cfg Config, logger *slog.Logger) (*Elector, error) {
@@ -56,6 +57,7 @@ func New(client kubernetes.Interface, cfg Config, logger *slog.Logger) (*Elector
 				if identity != cfg.Identity {
 					logger.Info("new leader elected", "identity", identity)
 				}
+				e.currentLeader.Store(&identity)
 			},
 		},
 	})
@@ -69,6 +71,18 @@ func New(client kubernetes.Interface, cfg Config, logger *slog.Logger) (*Elector
 
 func (e *Elector) IsLeader() bool {
 	return e.leading.Load()
+}
+
+// CurrentLeader reports the identity of whoever this instance last observed
+// holding the lease — used to address a request at the leader when this
+// instance isn't it. ok is false only before any leader has ever been
+// observed (e.g. immediately after startup, before the first election).
+func (e *Elector) CurrentLeader() (identity string, ok bool) {
+	v := e.currentLeader.Load()
+	if v == nil {
+		return "", false
+	}
+	return *v, true
 }
 
 // Run blocks until ctx is canceled, repeatedly campaigning for leadership.
