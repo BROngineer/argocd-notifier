@@ -68,13 +68,18 @@ func main() {
 
 	var eventsHandler, registerBackendHandler http.Handler = handler, http.HandlerFunc(registryHandler.RegisterBackend)
 	if cfg.LeaderElectionEnabled {
-		elector := startLeaderElection(ctx, cfg, logger)
+		elector, podAddrs := startLeaderElection(ctx, cfg, logger)
 		leaderAddr := func() (string, bool) {
 			identity, ok := elector.CurrentLeader()
 			if !ok {
 				return "", false
 			}
-			return fmt.Sprintf("http://%s.%s%s", identity, cfg.LeaderProxyDNSSuffix, cfg.ListenAddr), true
+			ip, err := podAddrs.Resolve(ctx, identity)
+			if err != nil {
+				logger.Error("failed to resolve leader pod address", "identity", identity, "error", err)
+				return "", false
+			}
+			return fmt.Sprintf("http://%s%s", ip, cfg.ListenAddr), true
 		}
 		eventsHandler = leaderproxy.New(elector.IsLeader, leaderAddr, eventsHandler, cfg.LeaderProxyRequestTimeout)
 		registerBackendHandler = leaderproxy.New(elector.IsLeader, leaderAddr, registerBackendHandler, cfg.LeaderProxyRequestTimeout)
@@ -141,12 +146,13 @@ func startPprof(addr string, logger *slog.Logger) *http.Server {
 	return srv
 }
 
-// startLeaderElection runs the elector in the background and returns it —
-// main.go uses IsLeader/CurrentLeader to route each request locally or
-// forward it to the leader (see leaderproxy.Handler), instead of gating
-// /readyz on leadership: every replica stays a normal, Ready Service
-// endpoint regardless of who's leading.
-func startLeaderElection(ctx context.Context, cfg *config.Config, logger *slog.Logger) *leader.Elector {
+// startLeaderElection runs the elector in the background and returns it
+// along with a PodAddressResolver sharing its Kubernetes client — main.go
+// uses IsLeader/CurrentLeader plus the resolver to route each request
+// locally or forward it to the leader (see leaderproxy.Handler), instead
+// of gating /readyz on leadership: every replica stays a normal, Ready
+// Service endpoint regardless of who's leading.
+func startLeaderElection(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*leader.Elector, *leader.PodAddressResolver) {
 	restCfg, err := rest.InClusterConfig()
 	if err != nil {
 		logger.Error("failed to load in-cluster config for leader election", "error", err)
@@ -173,5 +179,5 @@ func startLeaderElection(ctx context.Context, cfg *config.Config, logger *slog.L
 
 	go elector.Run(ctx)
 
-	return elector
+	return elector, leader.NewPodAddressResolver(client, cfg.PodNamespace)
 }

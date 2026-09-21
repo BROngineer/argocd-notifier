@@ -20,7 +20,7 @@ var (
 	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
 	ErrInvalidBackendRegistryTTL      = errors.New("InvalidBackendRegistryTTL")
 	ErrInvalidRemoteBackendTimeout    = errors.New("InvalidRemoteBackendTimeout")
-	ErrMissingLeaderProxyDNSSuffix    = errors.New("MissingLeaderProxyDNSSuffix")
+	ErrMissingPodNamespace            = errors.New("MissingPodNamespace")
 	ErrInvalidLeaderProxyTimeout      = errors.New("InvalidLeaderProxyTimeout")
 )
 
@@ -55,13 +55,12 @@ type Config struct {
 	// PodName is the leader-election identity; falls back to os.Hostname()
 	// (the pod name, in-cluster) in Load() when unset.
 	PodName string `envconfig:"pod_name"`
-	// LeaderProxyDNSSuffix makes a non-leader replica's own identity (its
-	// pod name) resolvable to the leader's: {leader-identity}.{this} must
-	// be a valid FQDN, e.g. a headless Service's
-	// "<svc>.<namespace>.svc.cluster.local". Required when leader election
-	// is enabled — a non-leader can't forward a request to the leader
-	// without knowing how to address it.
-	LeaderProxyDNSSuffix string `envconfig:"leader_proxy_dns_suffix"`
+	// PodNamespace is this pod's own namespace — not necessarily the same
+	// as LeaderElectionNamespace (that's just where the Lease lives, and
+	// can be overridden independently). Required when leader election is
+	// enabled: forwarding a request to the leader resolves its address via
+	// a Pods.Get call in this namespace.
+	PodNamespace string `envconfig:"pod_namespace"`
 	// LeaderProxyRequestTimeout bounds how long a non-leader waits for the
 	// leader's response headers when forwarding a request to it.
 	LeaderProxyRequestTimeout time.Duration `envconfig:"leader_proxy_request_timeout" default:"5s"`
@@ -120,8 +119,8 @@ func (c *Config) Validate() error {
 		if c.RenewDeadline <= c.RetryPeriod {
 			errs = append(errs, ErrRenewDeadlineTooShort)
 		}
-		if c.LeaderProxyDNSSuffix == "" {
-			errs = append(errs, ErrMissingLeaderProxyDNSSuffix)
+		if c.PodNamespace == "" {
+			errs = append(errs, ErrMissingPodNamespace)
 		}
 	}
 	if c.LeaderProxyRequestTimeout <= 0 {

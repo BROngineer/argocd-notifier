@@ -131,18 +131,18 @@ func TestConfig_Validate(t *testing.T) {
 				c.LeaderElectionEnabled = true
 				c.LeaderElectionNamespace = "argocd"
 				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
-				c.LeaderProxyDNSSuffix = "argocd-notifier-headless.argocd.svc.cluster.local"
+				c.PodNamespace = "argocd"
 			},
 			wantErr: nil,
 		},
 		{
-			name: "leader election missing proxy dns suffix",
+			name: "leader election missing pod namespace",
 			mutate: func(c *Config) {
 				c.LeaderElectionEnabled = true
 				c.LeaderElectionNamespace = "argocd"
 				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
 			},
-			wantErr: ErrMissingLeaderProxyDNSSuffix,
+			wantErr: ErrMissingPodNamespace,
 		},
 		{
 			name: "pprof addr conflicts with listen addr",
