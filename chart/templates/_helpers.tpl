@@ -53,6 +53,21 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default .Release.Namespace .Values.leaderElection.namespace -}}
 {{- end -}}
 
+{{- /*
+The headless Service backing per-pod DNS (<pod-name>.<this>.<namespace>.svc.cluster.local)
+that lets a non-leader resolve and forward requests to the current leader —
+must live in the pods' own namespace (Release.Namespace), which is not
+necessarily the same as leaderElectionNamespace (that's just where the Lease
+lives, and can be a different namespace by design).
+*/ -}}
+{{- define "argocd-notifier.headlessServiceName" -}}
+{{- printf "%s-headless" (include "argocd-notifier.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "argocd-notifier.leaderProxyDNSSuffix" -}}
+{{ include "argocd-notifier.headlessServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+{{- end -}}
+
 {{- define "argocd-notifier.slackBackendFullname" -}}
 {{- printf "%s-slack-backend" (include "argocd-notifier.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

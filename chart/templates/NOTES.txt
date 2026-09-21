@@ -7,7 +7,10 @@ argocd-notifier has been installed.
    https://github.com/BROngineer/argocd-notifier/blob/main/docs/setup.md
 {{- if .Values.leaderElection.enabled }}
 
-3. Leader election is enabled. Confirm exactly one pod is ready at a time:
-   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} \
-     -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+3. Leader election is enabled. Every pod should be Ready (non-leaders
+   forward requests to the leader rather than failing readiness — see
+   docs/design.md#high-availability). Confirm exactly one pod holds the
+   lease:
+   kubectl get lease {{ .Values.leaderElection.leaseName }} -n {{ include "argocd-notifier.leaderElectionNamespace" . }} \
+     -o jsonpath='{.spec.holderIdentity}{"\n"}'
 {{- end }}
