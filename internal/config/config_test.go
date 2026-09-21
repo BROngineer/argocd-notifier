@@ -61,6 +61,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RemoteBackendRequestTimeout != 5*time.Second {
 		t.Errorf("RemoteBackendRequestTimeout = %v, want 5s", cfg.RemoteBackendRequestTimeout)
 	}
+	if cfg.LeaderProxyRequestTimeout != 5*time.Second {
+		t.Errorf("LeaderProxyRequestTimeout = %v, want 5s", cfg.LeaderProxyRequestTimeout)
+	}
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -82,6 +85,7 @@ func TestConfig_Validate(t *testing.T) {
 			DuplicateAction:             "drop",
 			BackendRegistryTTL:          90 * time.Second,
 			RemoteBackendRequestTimeout: 5 * time.Second,
+			LeaderProxyRequestTimeout:   5 * time.Second,
 		}
 	}
 
@@ -127,8 +131,18 @@ func TestConfig_Validate(t *testing.T) {
 				c.LeaderElectionEnabled = true
 				c.LeaderElectionNamespace = "argocd"
 				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
+				c.PodNamespace = "argocd"
 			},
 			wantErr: nil,
+		},
+		{
+			name: "leader election missing pod namespace",
+			mutate: func(c *Config) {
+				c.LeaderElectionEnabled = true
+				c.LeaderElectionNamespace = "argocd"
+				c.LeaseDuration, c.RenewDeadline, c.RetryPeriod = 15*time.Second, 10*time.Second, 2*time.Second
+			},
+			wantErr: ErrMissingPodNamespace,
 		},
 		{
 			name: "pprof addr conflicts with listen addr",
@@ -166,6 +180,16 @@ func TestConfig_Validate(t *testing.T) {
 			name:    "negative remote backend request timeout",
 			mutate:  func(c *Config) { c.RemoteBackendRequestTimeout = -time.Second },
 			wantErr: ErrInvalidRemoteBackendTimeout,
+		},
+		{
+			name:    "zero leader proxy request timeout",
+			mutate:  func(c *Config) { c.LeaderProxyRequestTimeout = 0 },
+			wantErr: ErrInvalidLeaderProxyTimeout,
+		},
+		{
+			name:    "negative leader proxy request timeout",
+			mutate:  func(c *Config) { c.LeaderProxyRequestTimeout = -time.Second },
+			wantErr: ErrInvalidLeaderProxyTimeout,
 		},
 	}
 

@@ -160,7 +160,7 @@ type ClientInterface interface {
 	// Corresponds with GET /healthz (the `Healthz` operationId).
 	Healthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Readyz Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+	// Readyz Readiness probe. Always ready once the process is up, regardless of leadership — with leader election enabled, a non-leader forwards requests to the leader instead of refusing them here. See docs/design.md#high-availability.
 	//
 	// Corresponds with GET /readyz (the `Readyz` operationId).
 	Readyz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -229,7 +229,7 @@ func (c *Client) Healthz(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 	return c.Client.Do(req)
 }
 
-// Readyz Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+// Readyz Readiness probe. Always ready once the process is up, regardless of leadership — with leader election enabled, a non-leader forwards requests to the leader instead of refusing them here. See docs/design.md#high-availability.
 //
 // Corresponds with GET /readyz (the `Readyz` operationId).
 func (c *Client) Readyz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -477,7 +477,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /healthz (the `Healthz` operationId).
 	HealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthzResponse, error)
 
-	// ReadyzWithResponse Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+	// ReadyzWithResponse Readiness probe. Always ready once the process is up, regardless of leadership — with leader election enabled, a non-leader forwards requests to the leader instead of refusing them here. See docs/design.md#high-availability.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -674,7 +674,7 @@ func (c *ClientWithResponses) HealthzWithResponse(ctx context.Context, reqEditor
 	return ParseHealthzResponse(rsp)
 }
 
-// ReadyzWithResponse Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+// ReadyzWithResponse Readiness probe. Always ready once the process is up, regardless of leadership — with leader election enabled, a non-leader forwards requests to the leader instead of refusing them here. See docs/design.md#high-availability.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -785,7 +785,7 @@ type ServerInterface interface {
 	// Healthz Liveness probe. Always 200 if the process is up.
 	// (GET /healthz)
 	Healthz(w http.ResponseWriter, r *http.Request)
-	// Readyz Readiness probe. With leader election enabled, only the current leader reports ready — see docs/design.md#high-availability.
+	// Readyz Readiness probe. Always ready once the process is up, regardless of leadership — with leader election enabled, a non-leader forwards requests to the leader instead of refusing them here. See docs/design.md#high-availability.
 	// (GET /readyz)
 	Readyz(w http.ResponseWriter, r *http.Request)
 	// RegisterBackend Register a remote notification backend, or refresh its heartbeat — calling this again with the same name refreshes it; there is no separate heartbeat endpoint.
@@ -991,31 +991,32 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"tFdfj9vIDf8qhK7AJYAt+5Lryx76sNs7tGlzyWKz6T0URY/SUNIko6FCjrxRgwX6IfoJ+0mKmZHt9Vpb",
-	"5OWePJih+OdH8kf6S1FzP7AnH7S4+FJo3VGP6fjTjnyIB0Naix2CZV9cFD9bERYF6wOJR7ehKFcmaaDP",
-	"WAc3wX///R8InVWwCqEjuLNCULMPgnWAOxs6uJSW//jjtwqeg21sjVG/rsm31hPcUdUxf4SKzbSKIoAQ",
-	"poGgj3YNNCzZgA5Ur0AZGkvOgMeedKMdRtFRA2jACawHnXydDYfuqD5QPzgMBOzTfXYK1BqCZ0oEhmvd",
-	"KIVxKHvzvCxWxSA8kARLCSQchjfYUzxG94qLQoNY3xb3qwKl5dq8F7f4WmH9kbw5B/iXztYdCLVWAwkZ",
-	"mCVzvAltEB4DKQQu4Q2DoQZHFxLqQp9GK2Siq2c2W+Fx+CtN50b/hm4k4CahULNvbDtG23+6efv++p+v",
-	"L69+ep3Vs3M8BgXtMGrNTqEQYNsKtRiTE7il0JEs+tARutC9CxhGXQTG9thmcG2gfllmvkARnNI33gYb",
-	"bV9Ni/IOK3I5YcbYGDO665NEPmWCqw9Uh3gRpVOR/kyq2C7nXKi2g11snBu8g/LwDruEeCPcJ8x1rKJw",
-	"RYDec0iGEuJKva3ZsV9/YOvJQN2h9+R0E1BaCrqIstDA729eP+HjzmryaeEx9sl1h0pPvv6f1GWPlp/E",
-	"ti3JOSy3x7Z7yAQwf5A6egVUtiWwXxsaHE+L5Z0iy8VfXPz9WOurQ5MevXgAwsOcHbvyHwsFcDO35FWW",
-	"uaFPI2mK9pQTKlSasT8N9QqVAI0RUp0bTQhqdE5TkwP7Em739zgM5E0WbOxnMqBjEw8Km4TUBOgNbEIn",
-	"hGYtNLgJbFByTSocw4k3ra/daCiq6aEjoVX67NErQhC0Lna0OtRusaj8zHTnCdxTVJTIFKWZoyAwPOsx",
-	"1B3lSH6dRX+dCTuT5DqnngToc5oRmjvD+pr76NRcIVn180XvdBwGlqC3CY+bCMcSuSZmyrS191pJdqRw",
-	"/fbdLXyZs3d/gmsJrxpo0Cmtjom7s87l0RTiHAlgxsHF8qXLOpr7Q9YA2KL1Gk5sPoigYnaE/qyAfS7Z",
-	"fTUtB3hep/eJDhs+j/1dDNNANT0G/VvNAQ3CNamm6qEdyQTkzcDWB7Bxtg+spCtoyZNEsl0n4GRtxO7I",
-	"Q5pRnH6Os1Oo50DrOWzdT9Fgg8sMfpr+5Mfl9atiVexIMksV35XbcjtTsMfBFhfFy3JbvozTGEOXmi6v",
-	"Iek4cO7KA2G/MjH6septyEtNBpo0XLFJRRJXk5m0cchJtOw3H5T9cSuKp98JNcVF8c3muDZt8qtusu77",
-	"0zwGGSld6MBeM0G82L44z85lXdMQyKTuJP9ppDHS3P2q+H67XVjD0DUsPRn4y7u3b1bAAngY/nNvWYXe",
-	"qlrfJj2/37481/PKt6QBkrn4QTM69wMIBZnyuhQzx01TpvrUse9RpgOcwP7A3pdH4A7knXdD+JFqNmRW",
-	"cehZE0tndRJmWucMVTz6msxhldiPQB+LESrH9UcF9mD4zmsQwv7QwoacjRWbVsHDahnHVSfsedTDyhfp",
-	"NsY3ildoUEOObJP3kn9FhFpaqJ8/z+9nuVxIzmV05jFir2OTkGpss4pKuHR3OCm82G7B5r1r339WYRxm",
-	"t2KrT097dZOfv8apJBobVKgmu6PI+E1j66dr4w0HSPbhWZq/kesS+40i5AM4QkPy/HGg0ZB9GOkvsY6y",
-	"MJCjRI5AHisXC4G9mxbUglBiu9mDvArNpGJIbevL3nzT2bZb4w6tw8o6G6YZtt13mz3lbPar9NPc8Giy",
-	"/0b88MT+8FWE8f1SPg//EJ6xQEcooSKMKWuEtCPz/GvoY470PIlZe2KVSOGn29kMbuKd2R7YoA+8iAmL",
-	"vXb8kxDH4PEvmMZVIe0Le38VbPghvkliIs+gNKBgoAdq9xMp+nt//78BAA==",
+	"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",
+	"nP4UzzipXSAQHAwbxQdm91Mvxnt//98BAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -45,9 +45,9 @@ Running more than 1 replica **requires** leader election (`LEADER_ELECTION_ENABL
 
 This is **failover-speed-plus-no-split-brain only, not state durability**: leader election guarantees exactly one replica is ever active, and failover to a standby is fast (seconds, bounded by `LEASE_DURATION`/`RENEW_DEADLINE`) — but the new leader still starts with empty in-memory session state and zero registered backends, same as a single-replica restart. Making session state (and thus in-flight message refs) survive a leader change would need externalized state (e.g. Redis) — deliberately out of scope for now. Backends re-registering periodically (heartbeat) is what lets them get noticed by a new leader — see [docs/remote-backends.md](docs/remote-backends.md).
 
-Mechanism: each replica runs a `leaderelection.LeaderElector` (`internal/leader`) against a `coordination.k8s.io/v1` `Lease`. Only the current leader's `/readyz` returns 200 (`httpx.ReadyzHandler` fed by `Elector.IsLeader`); non-leaders report not-ready, so the k8s Service's endpoint list contains only the leader and routes 100% of traffic to it.
+Mechanism: each replica runs a `leaderelection.LeaderElector` (`internal/leader`) against a `coordination.k8s.io/v1` `Lease`. `/readyz` is **not** gated on leadership — every replica reports ready unconditionally, so the Deployment rollout completes normally and the k8s Service load-balances across all of them, same as without leader election. What changes is what happens once a request lands: the leader handles it locally; a non-leader forwards it to the current leader (`internal/leaderproxy`, a reverse proxy) rather than processing it itself, since the in-memory session/registry state that matters only exists on the leader. The leader's address is resolved via a `Pods.Get` call against the Kubernetes API (`internal/leader.PodAddressResolver`, cached until the leader changes) — a DNS-based approach (per-pod hostnames via a headless Service) was tried first and reverted: a Deployment can't give each replica a unique, stable hostname the way a StatefulSet can, so per-pod DNS records never actually got created. In the brief window right after a failover where no leader is known yet, a non-leader returns `503` for that request specifically — not a readiness change, and ArgoCD's webhook already retries on 5xx.
 
-Requires RBAC to get/create/update `Lease` objects in `LEADER_ELECTION_NAMESPACE`:
+Requires RBAC for `Lease` objects in `LEADER_ELECTION_NAMESPACE`, plus read-only `Pods.Get` in the pods' own namespace (`Release.Namespace` — not necessarily the same as `LEADER_ELECTION_NAMESPACE`, which is why these are separate Role/RoleBinding pairs):
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -72,5 +72,29 @@ subjects:
 roleRef:
   kind: Role
   name: argocd-notifier-leader-election
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-notifier-pod-lookup
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-notifier-pod-lookup
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: argocd-notifier
+    namespace: argocd
+roleRef:
+  kind: Role
+  name: argocd-notifier-pod-lookup
   apiGroup: rbac.authorization.k8s.io
 ```

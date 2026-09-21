@@ -20,6 +20,8 @@ var (
 	ErrPprofAddrConflict              = errors.New("PprofAddrConflict")
 	ErrInvalidBackendRegistryTTL      = errors.New("InvalidBackendRegistryTTL")
 	ErrInvalidRemoteBackendTimeout    = errors.New("InvalidRemoteBackendTimeout")
+	ErrMissingPodNamespace            = errors.New("MissingPodNamespace")
+	ErrInvalidLeaderProxyTimeout      = errors.New("InvalidLeaderProxyTimeout")
 )
 
 type Config struct {
@@ -53,6 +55,15 @@ type Config struct {
 	// PodName is the leader-election identity; falls back to os.Hostname()
 	// (the pod name, in-cluster) in Load() when unset.
 	PodName string `envconfig:"pod_name"`
+	// PodNamespace is this pod's own namespace — not necessarily the same
+	// as LeaderElectionNamespace (that's just where the Lease lives, and
+	// can be overridden independently). Required when leader election is
+	// enabled: forwarding a request to the leader resolves its address via
+	// a Pods.Get call in this namespace.
+	PodNamespace string `envconfig:"pod_namespace"`
+	// LeaderProxyRequestTimeout bounds how long a non-leader waits for the
+	// leader's response headers when forwarding a request to it.
+	LeaderProxyRequestTimeout time.Duration `envconfig:"leader_proxy_request_timeout" default:"5s"`
 
 	// PprofEnabled serves net/http/pprof on its own listener, separate from
 	// the main server — never put behind the k8s Service ArgoCD's webhook
@@ -108,6 +119,12 @@ func (c *Config) Validate() error {
 		if c.RenewDeadline <= c.RetryPeriod {
 			errs = append(errs, ErrRenewDeadlineTooShort)
 		}
+		if c.PodNamespace == "" {
+			errs = append(errs, ErrMissingPodNamespace)
+		}
+	}
+	if c.LeaderProxyRequestTimeout <= 0 {
+		errs = append(errs, ErrInvalidLeaderProxyTimeout)
 	}
 	if c.PprofEnabled && c.PprofAddr == c.ListenAddr {
 		errs = append(errs, ErrPprofAddrConflict)

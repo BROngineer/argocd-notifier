@@ -1,0 +1,17 @@
+{{- if .Values.leaderElection.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "argocd-notifier.fullname" . }}-pod-lookup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-notifier.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "argocd-notifier.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "argocd-notifier.fullname" . }}-pod-lookup
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

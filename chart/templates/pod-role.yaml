@@ -1,0 +1,21 @@
+{{- /*
+Separate from the Lease Role in role.yaml: that one lives in
+leaderElectionNamespace (which can be overridden to a different namespace
+than the pods'), while resolving a leader's Pod IP always needs to Get pods
+in this release's own namespace — the two are independent by design, so
+they get independent Role/RoleBinding pairs even when the namespaces happen
+to coincide.
+*/ -}}
+{{- if .Values.leaderElection.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "argocd-notifier.fullname" . }}-pod-lookup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-notifier.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+{{- end }}

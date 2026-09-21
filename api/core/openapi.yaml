@@ -40,8 +40,10 @@ paths:
     get:
       operationId: readyz
       summary: >-
-        Readiness probe. With leader election enabled, only the current
-        leader reports ready — see docs/design.md#high-availability.
+        Readiness probe. Always ready once the process is up, regardless of
+        leadership — with leader election enabled, a non-leader forwards
+        requests to the leader instead of refusing them here. See
+        docs/design.md#high-availability.
       responses:
         "200":
           description: Ready to receive traffic.

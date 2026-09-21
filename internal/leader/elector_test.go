@@ -68,7 +68,31 @@ func TestElector_SingleLeaderAndFailover(t *testing.T) {
 		t.Fatalf("expected exactly one leader, got e1=%v e2=%v", e1.IsLeader(), e2.IsLeader())
 	}
 
+	leaderIdentity, ok := leader.CurrentLeader()
+	if !ok {
+		t.Fatal("leader.CurrentLeader() ok = false, want true")
+	}
+	if standbyIdentity, ok := standby.CurrentLeader(); !ok || standbyIdentity != leaderIdentity {
+		t.Fatalf("standby.CurrentLeader() = (%q, %v), want (%q, true)", standbyIdentity, ok, leaderIdentity)
+	}
+
 	cancelLeader()
 
 	waitFor(t, 3*time.Second, standby.IsLeader)
+
+	newLeaderIdentity, ok := standby.CurrentLeader()
+	if !ok || newLeaderIdentity == leaderIdentity {
+		t.Fatalf("CurrentLeader() after failover = (%q, %v), want a different identity than %q", newLeaderIdentity, ok, leaderIdentity)
+	}
+}
+
+func TestElector_CurrentLeader_UnknownBeforeElection(t *testing.T) {
+	e, err := New(fake.NewSimpleClientset(), testConfig("pod-a"), testLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if _, ok := e.CurrentLeader(); ok {
+		t.Fatal("CurrentLeader() ok = true before any election, want false")
+	}
 }
