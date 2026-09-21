@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/pprof"
@@ -19,6 +20,7 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/config"
 	"github.com/BROngineer/argocd-notifier/internal/httpx"
 	"github.com/BROngineer/argocd-notifier/internal/leader"
+	"github.com/BROngineer/argocd-notifier/internal/leaderproxy"
 	"github.com/BROngineer/argocd-notifier/internal/logging"
 	"github.com/BROngineer/argocd-notifier/internal/receiver"
 	"github.com/BROngineer/argocd-notifier/internal/registry"
@@ -64,17 +66,25 @@ func main() {
 
 	receiver.RunWorkers(ctx, handler.Events(), cfg.WorkerCount, engine.Ingest)
 
-	var isReady func() bool
+	var eventsHandler, registerBackendHandler http.Handler = handler, http.HandlerFunc(registryHandler.RegisterBackend)
 	if cfg.LeaderElectionEnabled {
-		isReady = startLeaderElection(ctx, cfg, logger)
+		elector := startLeaderElection(ctx, cfg, logger)
+		leaderAddr := func() (string, bool) {
+			identity, ok := elector.CurrentLeader()
+			if !ok {
+				return "", false
+			}
+			return fmt.Sprintf("http://%s.%s%s", identity, cfg.LeaderProxyDNSSuffix, cfg.ListenAddr), true
+		}
+		eventsHandler = leaderproxy.New(elector.IsLeader, leaderAddr, eventsHandler, cfg.LeaderProxyRequestTimeout)
+		registerBackendHandler = leaderproxy.New(elector.IsLeader, leaderAddr, registerBackendHandler, cfg.LeaderProxyRequestTimeout)
 	}
 
 	srv := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: httpx.Middleware(logger)(core.Handler(&server{
-			events:   handler,
-			registry: registryHandler,
-			isReady:  isReady,
+			events:          eventsHandler,
+			registerBackend: registerBackendHandler,
 		})),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -131,10 +141,12 @@ func startPprof(addr string, logger *slog.Logger) *http.Server {
 	return srv
 }
 
-// startLeaderElection runs the elector in the background and returns its
-// IsLeader as the /readyz predicate — only the current leader reports ready,
-// so the k8s Service routes traffic exclusively to it.
-func startLeaderElection(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() bool {
+// startLeaderElection runs the elector in the background and returns it —
+// main.go uses IsLeader/CurrentLeader to route each request locally or
+// forward it to the leader (see leaderproxy.Handler), instead of gating
+// /readyz on leadership: every replica stays a normal, Ready Service
+// endpoint regardless of who's leading.
+func startLeaderElection(ctx context.Context, cfg *config.Config, logger *slog.Logger) *leader.Elector {
 	restCfg, err := rest.InClusterConfig()
 	if err != nil {
 		logger.Error("failed to load in-cluster config for leader election", "error", err)
@@ -161,5 +173,5 @@ func startLeaderElection(ctx context.Context, cfg *config.Config, logger *slog.L
 
 	go elector.Run(ctx)
 
-	return elector.IsLeader
+	return elector
 }
