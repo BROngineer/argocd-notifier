@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,7 +59,8 @@ func TestRegistrar_RegistersImmediatelyAndHeartbeats(t *testing.T) {
 	fs := newFakeCoreServer()
 	defer fs.Close()
 
-	r, err := NewRegistrar(fs.URL, "slack", "http://slack-backend:8081", true, 20*time.Millisecond, http.DefaultClient, testLogger())
+	logger, logs := newRecordingLogger()
+	r, err := NewRegistrar(fs.URL, "slack", "http://slack-backend:8081", true, 20*time.Millisecond, http.DefaultClient, logger)
 	if err != nil {
 		t.Fatalf("NewRegistrar() error = %v", err)
 	}
@@ -74,6 +76,27 @@ func TestRegistrar_RegistersImmediatelyAndHeartbeats(t *testing.T) {
 	}
 	if !r.HasRegistered() {
 		t.Fatal("HasRegistered() = false, want true after a successful registration")
+	}
+
+	waitFor(t, time.Second, func() bool { return strings.Contains(logs.String(), "heartbeat refreshed") })
+
+	logged := logs.String()
+	if !strings.Contains(logged, "level=INFO") || !strings.Contains(logged, "msg=registered") {
+		t.Fatalf("expected an INFO log for the first registration, got %q", logged)
+	}
+	if !strings.Contains(logged, "heartbeat refreshed") {
+		t.Fatalf("expected an INFO log for the subsequent heartbeat, got %q", logged)
+	}
+}
+
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for condition")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

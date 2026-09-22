@@ -79,6 +79,9 @@ func (r *Registrar) register(ctx context.Context) {
 		return
 	}
 
-	r.registered.Store(true)
-	r.logger.Debug("registered", "name", r.name, "baseURL", r.baseURL)
+	if r.registered.CompareAndSwap(false, true) {
+		r.logger.Info("registered", "name", r.name, "baseURL", r.baseURL, "supportsThreadReply", r.supportsThreadReply)
+		return
+	}
+	r.logger.Info("heartbeat refreshed", "name", r.name)
 }
