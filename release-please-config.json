@@ -15,7 +15,7 @@
     }
   },
   "pull-request-header": ":robot: Release ready",
-  "pull-request-title-pattern": "chore${scope}: ${component} ${version}",
+  "pull-request-title-pattern": "build${scope}: ${component} ${version}",
   "changelog-sections": [
     { "type": "feat", "section": "Features", "hidden": false },
     { "type": "fix", "section": "Bug Fixes", "hidden": false },
