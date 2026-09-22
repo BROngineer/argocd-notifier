@@ -29,20 +29,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var ev event.Event
 	if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+		h.logger.Warn("event payload malformed", "error", err)
 		http.Error(w, "invalid payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := ev.Validate(); err != nil {
+		h.logger.Warn("event invalid", "groupKey", ev.GroupKey, "appName", ev.AppName, "error", err)
 		http.Error(w, "invalid event: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	select {
 	case h.ch <- ev:
+		h.logger.Info("event accepted", "groupKey", ev.GroupKey, "appName", ev.AppName, "trigger", ev.Trigger, "backend", ev.Backend)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	default:
+		h.logger.Warn("event queue full", "groupKey", ev.GroupKey, "appName", ev.AppName)
 		http.Error(w, "queue full", http.StatusServiceUnavailable)
 	}
 }

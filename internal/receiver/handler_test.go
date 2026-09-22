@@ -1,8 +1,8 @@
 package receiver
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -15,14 +15,16 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/event"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+func newRecordingLogger() (*slog.Logger, *bytes.Buffer) {
+	var buf bytes.Buffer
+	return slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), &buf
 }
 
 const validEventBody = `{"groupKey":"tatooine","appName":"tatooine-dev","trigger":"on-deployed","revision":"rev-1","recipient":"chan1","backend":"slack"}`
 
 func TestHandler_MalformedJSON(t *testing.T) {
-	h := NewHandler(1, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(1, logger)
 	req := httptest.NewRequest(http.MethodPost, "/events", strings.NewReader("{not json"))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -30,10 +32,14 @@ func TestHandler_MalformedJSON(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "malformed") {
+		t.Fatalf("expected a WARN log mentioning the malformed payload, got %q", logs.String())
+	}
 }
 
 func TestHandler_InvalidEvent(t *testing.T) {
-	h := NewHandler(1, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(1, logger)
 	req := httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(`{"appName":"foo"}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -41,10 +47,14 @@ func TestHandler_InvalidEvent(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "invalid") {
+		t.Fatalf("expected a WARN log mentioning the invalid event, got %q", logs.String())
+	}
 }
 
 func TestHandler_ValidEvent_AcceptedAndEnqueued(t *testing.T) {
-	h := NewHandler(1, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(1, logger)
 	req := httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(validEventBody))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -61,10 +71,14 @@ func TestHandler_ValidEvent_AcceptedAndEnqueued(t *testing.T) {
 	default:
 		t.Fatal("expected event to be enqueued")
 	}
+	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "tatooine-dev") {
+		t.Fatalf("expected an INFO log naming the accepted event, got %q", logs.String())
+	}
 }
 
 func TestHandler_QueueFull(t *testing.T) {
-	h := NewHandler(1, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(1, logger)
 
 	rec1 := httptest.NewRecorder()
 	h.ServeHTTP(rec1, httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(validEventBody)))
@@ -76,6 +90,9 @@ func TestHandler_QueueFull(t *testing.T) {
 	h.ServeHTTP(rec2, httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(validEventBody)))
 	if rec2.Code != http.StatusServiceUnavailable {
 		t.Fatalf("second request status = %d, want 503", rec2.Code)
+	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "queue full") {
+		t.Fatalf("expected a WARN log mentioning the full queue, got %q", logs.String())
 	}
 }
 

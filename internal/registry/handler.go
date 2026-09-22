@@ -27,14 +27,17 @@ func (h *Handler) RegisterBackend(w http.ResponseWriter, r *http.Request) {
 
 	var req core.RegisterBackendRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("registration request malformed", "error", err)
 		http.Error(w, "invalid payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if err := h.reg.Register(req.Name, req.BaseURL, req.SupportsThreadReply); err != nil {
+		h.logger.Warn("registration rejected", "name", req.Name, "baseURL", req.BaseURL, "error", err)
 		http.Error(w, "invalid registration: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	h.logger.Info("backend registered", "name", req.Name, "baseURL", req.BaseURL, "supportsThreadReply", req.SupportsThreadReply)
 	w.WriteHeader(http.StatusNoContent)
 }
