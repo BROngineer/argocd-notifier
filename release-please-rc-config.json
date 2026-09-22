@@ -14,7 +14,8 @@
       "changelog-sections": [
         { "type": "feat", "hidden": false },
         { "type": "fix", "hidden": false },
-        { "type": "chore", "hidden": false }
+        { "type": "chore", "hidden": false },
+        { "type": "build", "hidden": true }
       ],
       "extra-files": [
         { "type": "yaml", "path": "chart/Chart.yaml", "jsonpath": "$.appVersion" },
