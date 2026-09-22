@@ -26,8 +26,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: "${{ fromJson(steps.create-pr.outputs.pr).number }}"
+          PR_JSON: ${{ steps.create-pr.outputs.pr }}
         run: |
+          PR_NUMBER=$(jq -r '.number' <<< "$PR_JSON")
           MAX_ATTEMPTS=10
           attempt=1
           STATE=""
