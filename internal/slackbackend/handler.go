@@ -33,6 +33,7 @@ func (h *Handler) Notify(w http.ResponseWriter, r *http.Request) {
 
 	var req backendapi.NotifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("notify payload malformed", "error", err)
 		http.Error(w, "invalid payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -48,6 +49,7 @@ func (h *Handler) Notify(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "update failed", http.StatusInternalServerError)
 				return
 			}
+			h.logger.Info("notification pushed", "recipient", req.Recipient, "action", "update", "ref", ref, "items", len(n.Items))
 			h.respondNotifyResult(w, ref)
 			return
 		}
@@ -59,6 +61,7 @@ func (h *Handler) Notify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "post failed", http.StatusInternalServerError)
 		return
 	}
+	h.logger.Info("notification pushed", "recipient", req.Recipient, "action", "post", "ref", newRef, "items", len(n.Items))
 	h.respondNotifyResult(w, newRef)
 }
 
@@ -72,6 +75,7 @@ func (h *Handler) ThreadReply(w http.ResponseWriter, r *http.Request) {
 
 	var req backendapi.ThreadReplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("thread reply payload malformed", "error", err)
 		http.Error(w, "invalid payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -89,5 +93,6 @@ func (h *Handler) ThreadReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.logger.Info("thread reply pushed", "recipient", req.Recipient, "ref", req.Ref)
 	w.WriteHeader(http.StatusNoContent)
 }

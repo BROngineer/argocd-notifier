@@ -64,9 +64,9 @@ func TestLeaderProxyFlow_RequestAlwaysHandledByTheRealLeader(t *testing.T) {
 		}
 	}
 
-	serverA := httptest.NewServer(leaderproxy.New(electorA.IsLeader, leaderAddrFor(electorA), newLocalHandler("pod-a"), time.Second))
+	serverA := httptest.NewServer(leaderproxy.New(electorA.IsLeader, leaderAddrFor(electorA), newLocalHandler("pod-a"), time.Second, testLogger()))
 	t.Cleanup(serverA.Close)
-	serverB := httptest.NewServer(leaderproxy.New(electorB.IsLeader, leaderAddrFor(electorB), newLocalHandler("pod-b"), time.Second))
+	serverB := httptest.NewServer(leaderproxy.New(electorB.IsLeader, leaderAddrFor(electorB), newLocalHandler("pod-b"), time.Second, testLogger()))
 	t.Cleanup(serverB.Close)
 
 	addrByIdentity["pod-a"] = serverA.URL

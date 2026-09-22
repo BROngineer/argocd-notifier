@@ -1,6 +1,7 @@
 package slackbackend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,30 @@ import (
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// syncBuffer guards against concurrent writes from a background goroutine
+// (Registrar.Run) racing with the test's own reads of the log output.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func newRecordingLogger() (*slog.Logger, *syncBuffer) {
+	buf := &syncBuffer{}
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})), buf
 }
 
 type call struct {
@@ -83,7 +108,8 @@ func (b *fakePostOnlyBackend) Calls() []call {
 const validNotifyBody = `{"recipient":"chan1","ref":"","notification":{"summary":"s","items":[{"appName":"a","cluster":"c","trigger":"on-deployed"}]}}`
 
 func TestHandler_Notify_MalformedJSON(t *testing.T) {
-	h := NewHandler(&fakeBackend{}, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(&fakeBackend{}, logger)
 	req := httptest.NewRequest(http.MethodPost, "/notify", strings.NewReader("{not json"))
 	rec := httptest.NewRecorder()
 	h.Notify(rec, req)
@@ -91,11 +117,15 @@ func TestHandler_Notify_MalformedJSON(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "malformed") {
+		t.Fatalf("expected a WARN log about the malformed payload, got %q", logs.String())
+	}
 }
 
 func TestHandler_Notify_EmptyRefPosts(t *testing.T) {
 	backend := &fakeBackend{}
-	h := NewHandler(backend, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(backend, logger)
 	req := httptest.NewRequest(http.MethodPost, "/notify", strings.NewReader(validNotifyBody))
 	rec := httptest.NewRecorder()
 	h.Notify(rec, req)
@@ -115,11 +145,15 @@ func TestHandler_Notify_EmptyRefPosts(t *testing.T) {
 	if result.Ref != calls[0].ref {
 		t.Fatalf("response ref = %q, want %q", result.Ref, calls[0].ref)
 	}
+	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "action=post") {
+		t.Fatalf("expected an INFO log about the pushed notification, got %q", logs.String())
+	}
 }
 
 func TestHandler_Notify_NonEmptyRefUpdates(t *testing.T) {
 	backend := &fakeBackend{}
-	h := NewHandler(backend, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(backend, logger)
 	body := `{"recipient":"chan1","ref":"existing-ref","notification":{"summary":"s","items":[]}}`
 	req := httptest.NewRequest(http.MethodPost, "/notify", strings.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -137,6 +171,9 @@ func TestHandler_Notify_NonEmptyRefUpdates(t *testing.T) {
 	_ = json.NewDecoder(rec.Body).Decode(&result)
 	if result.Ref != "existing-ref" {
 		t.Fatalf("response ref = %q, want existing-ref (unchanged by Update)", result.Ref)
+	}
+	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "action=update") {
+		t.Fatalf("expected an INFO log about the pushed update, got %q", logs.String())
 	}
 }
 
@@ -158,7 +195,8 @@ func TestHandler_Notify_NonEmptyRefFallsBackToPostWithoutUpdater(t *testing.T) {
 }
 
 func TestHandler_ThreadReply_MalformedJSON(t *testing.T) {
-	h := NewHandler(&fakeBackend{}, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(&fakeBackend{}, logger)
 	req := httptest.NewRequest(http.MethodPost, "/thread-reply", strings.NewReader("{not json"))
 	rec := httptest.NewRecorder()
 	h.ThreadReply(rec, req)
@@ -166,11 +204,15 @@ func TestHandler_ThreadReply_MalformedJSON(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "malformed") {
+		t.Fatalf("expected a WARN log about the malformed payload, got %q", logs.String())
+	}
 }
 
 func TestHandler_ThreadReply_Success(t *testing.T) {
 	backend := &fakeBackend{}
-	h := NewHandler(backend, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(backend, logger)
 	body := `{"recipient":"chan1","ref":"ref-1","text":"again"}`
 	req := httptest.NewRequest(http.MethodPost, "/thread-reply", strings.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -182,6 +224,9 @@ func TestHandler_ThreadReply_Success(t *testing.T) {
 	calls := backend.Calls()
 	if len(calls) != 1 || calls[0].kind != "thread" || calls[0].text != "again" {
 		t.Fatalf("expected 1 thread call, got %+v", calls)
+	}
+	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "thread reply pushed") {
+		t.Fatalf("expected an INFO log about the pushed thread reply, got %q", logs.String())
 	}
 }
 

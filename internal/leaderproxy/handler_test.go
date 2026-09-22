@@ -1,13 +1,20 @@
 package leaderproxy
 
 import (
+	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func newRecordingLogger() (*slog.Logger, *bytes.Buffer) {
+	var buf bytes.Buffer
+	return slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), &buf
+}
 
 func TestHandler_IsLeader_CallsLocal(t *testing.T) {
 	var localCalled bool
@@ -16,10 +23,11 @@ func TestHandler_IsLeader_CallsLocal(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	logger, _ := newRecordingLogger()
 	h := New(func() bool { return true }, func() (string, bool) {
 		t.Fatal("leaderAddr should not be consulted when this instance is the leader")
 		return "", false
-	}, local, time.Second)
+	}, local, time.Second, logger)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/events", nil))
@@ -33,13 +41,17 @@ func TestHandler_IsLeader_CallsLocal(t *testing.T) {
 }
 
 func TestHandler_NotLeader_LeaderUnknown_Returns503(t *testing.T) {
-	h := New(func() bool { return false }, func() (string, bool) { return "", false }, nil, time.Second)
+	logger, logs := newRecordingLogger()
+	h := New(func() bool { return false }, func() (string, bool) { return "", false }, nil, time.Second, logger)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/events", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "no leader") {
+		t.Fatalf("expected a WARN log about the unknown leader, got %q", logs.String())
 	}
 }
 
@@ -54,7 +66,8 @@ func TestHandler_NotLeader_ProxiesToLeader(t *testing.T) {
 	}))
 	defer leader.Close()
 
-	h := New(func() bool { return false }, func() (string, bool) { return leader.URL, true }, nil, time.Second)
+	logger, logs := newRecordingLogger()
+	h := New(func() bool { return false }, func() (string, bool) { return leader.URL, true }, nil, time.Second, logger)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(`{"groupKey":"g"}`))
@@ -72,6 +85,9 @@ func TestHandler_NotLeader_ProxiesToLeader(t *testing.T) {
 	if rec.Body.String() != `{"status":"accepted"}` {
 		t.Fatalf("proxied response body = %q, want the leader's response passed through", rec.Body.String())
 	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "forwarding to leader") {
+		t.Fatalf("expected a DEBUG log about forwarding, got %q", logs.String())
+	}
 }
 
 func TestHandler_NotLeader_ProxyTimeout_Returns502(t *testing.T) {
@@ -81,12 +97,16 @@ func TestHandler_NotLeader_ProxyTimeout_Returns502(t *testing.T) {
 	}))
 	defer leader.Close()
 
-	h := New(func() bool { return false }, func() (string, bool) { return leader.URL, true }, nil, 20*time.Millisecond)
+	logger, logs := newRecordingLogger()
+	h := New(func() bool { return false }, func() (string, bool) { return leader.URL, true }, nil, 20*time.Millisecond, logger)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/events", nil))
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502 (leader response timed out)", rec.Code)
+	}
+	if !strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("expected the proxy's dial/timeout failure to surface as a structured ERROR log, got %q", logs.String())
 	}
 }

@@ -81,8 +81,8 @@ func main() {
 			}
 			return fmt.Sprintf("http://%s%s", ip, cfg.ListenAddr), true
 		}
-		eventsHandler = leaderproxy.New(elector.IsLeader, leaderAddr, eventsHandler, cfg.LeaderProxyRequestTimeout)
-		registerBackendHandler = leaderproxy.New(elector.IsLeader, leaderAddr, registerBackendHandler, cfg.LeaderProxyRequestTimeout)
+		eventsHandler = leaderproxy.New(elector.IsLeader, leaderAddr, eventsHandler, cfg.LeaderProxyRequestTimeout, logger)
+		registerBackendHandler = leaderproxy.New(elector.IsLeader, leaderAddr, registerBackendHandler, cfg.LeaderProxyRequestTimeout, logger)
 	}
 
 	srv := &http.Server{
