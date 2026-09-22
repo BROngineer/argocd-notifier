@@ -8,6 +8,7 @@
       "include-v-in-release-name": true,
       "extra-files": [
         { "type": "yaml", "path": "chart/Chart.yaml", "jsonpath": "$.appVersion" },
+        { "type": "json", "path": ".release-please-rc-manifest.json", "jsonpath": "$['.']" },
         { "type": "generic", "path": "chart/values.yaml" }
       ]
     }
@@ -16,6 +17,7 @@
   "changelog-sections": [
     { "type": "feat", "section": "Features", "hidden": false },
     { "type": "fix", "section": "Bug Fixes", "hidden": false },
-    { "type": "chore", "section": "Miscellaneous", "hidden": false }
+    { "type": "chore", "section": "Miscellaneous", "hidden": false },
+    { "type": "build", "hidden": true }
   ]
 }
