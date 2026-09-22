@@ -14,12 +14,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: create-pr
         with:
           config-file: release-please-rc-config.json
           manifest-file: .release-please-rc-manifest.json
           token: ${{ secrets.AUTOMATION_TOKEN }}
           target-branch: main
-          autoMergeRequest: true
+
+      - if: ${{ steps.create-pr.outputs.pr }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          PR_NUMBER: "${{ fromJson(steps.create-pr.outputs.pr).number }}"
+        run: |
+          MAX_ATTEMPTS=10
+          attempt=1
+          STATE=""
+          while (( attempt <= MAX_ATTEMPTS )); do
+            STATE=$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')
+            if [[ "$STATE" == "CLEAN" ]]; then
+              break
+            fi
+            sleep 5
+            attempt=$(( attempt + 1 ))
+          done
+
+          if [[ "$STATE" != "CLEAN" ]]; then
+            echo "Error: PR ${PR_NUMBER} is not mergeable (state: ${STATE:-<empty>})"
+            exit 1
+          fi
+
+          echo "Info: merging PR ${PR_NUMBER}"
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
 
   release-please:
     runs-on: ubuntu-latest
