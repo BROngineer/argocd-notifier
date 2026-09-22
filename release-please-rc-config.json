@@ -1,6 +1,7 @@
 {
   "packages": {
     ".": {
+      "component": "release-candidate",
       "release-type": "simple",
       "versioning": "prerelease",
       "prerelease": true,
@@ -17,5 +18,5 @@
     }
   },
   "pull-request-header": ":robot: Release candidate ready",
-  "pull-request-title-pattern": "build${scope}: release${component} ${version}"
+  "pull-request-title-pattern": "build${scope}: ${component} ${version}"
 }

@@ -1,6 +1,7 @@
 {
   "packages": {
     ".": {
+      "component": "release",
       "release-type": "simple",
       "bump-minor-pre-major": true,
       "include-component-in-tag": false,
@@ -14,6 +15,7 @@
     }
   },
   "pull-request-header": ":robot: Release ready",
+  "pull-request-title-pattern": "chore${scope}: ${component} ${version}",
   "changelog-sections": [
     { "type": "feat", "section": "Features", "hidden": false },
     { "type": "fix", "section": "Bug Fixes", "hidden": false },
