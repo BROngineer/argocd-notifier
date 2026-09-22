@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.0](https://github.com/BROngineer/argocd-notifier/compare/v0.4.0...v0.5.0) (2026-09-22)
+
+
+### Features
+
+* better leader election with proxying requests to the leader ([#27](https://github.com/BROngineer/argocd-notifier/issues/27)) ([157ee66](https://github.com/BROngineer/argocd-notifier/commit/157ee667def49315e7a0285dca197ae996024a61))
+* request logging ([#29](https://github.com/BROngineer/argocd-notifier/issues/29)) ([f1fb384](https://github.com/BROngineer/argocd-notifier/commit/f1fb3847ad5789ccaaa754f3933051d46bf0781d))
+
+
+### Bug Fixes
+
+* explicit user-facing changes for rc ([#35](https://github.com/BROngineer/argocd-notifier/issues/35)) ([9e7ddf0](https://github.com/BROngineer/argocd-notifier/commit/9e7ddf0e3410e3f69c0b69a8e276fc7fb74f4ba1))
+* missing GH_REPO env var for auto-merge step ([#37](https://github.com/BROngineer/argocd-notifier/issues/37)) ([bc82072](https://github.com/BROngineer/argocd-notifier/commit/bc820729937d71c0952f8e8f437cd83b185f5a9b))
+* release-please configs ([#31](https://github.com/BROngineer/argocd-notifier/issues/31)) ([6610b3b](https://github.com/BROngineer/argocd-notifier/commit/6610b3bee841cde25e43b03441ecfe1acf175c7b))
+* templates evaluation ([#41](https://github.com/BROngineer/argocd-notifier/issues/41)) ([c52ac1e](https://github.com/BROngineer/argocd-notifier/commit/c52ac1eeed682e16ea03adc4ad19d3c293af8598))
+
+
+### Miscellaneous
+
+* enhance release-please flow ([#30](https://github.com/BROngineer/argocd-notifier/issues/30)) ([15ee9a0](https://github.com/BROngineer/argocd-notifier/commit/15ee9a055aca4c8b168e295c7a92714867cc6043))
+* hide 'build' scope from release rc config ([#38](https://github.com/BROngineer/argocd-notifier/issues/38)) ([a86695f](https://github.com/BROngineer/argocd-notifier/commit/a86695ff14fe7f9114f92cbee9c122c376111cd5))
+* update release workflow ([#34](https://github.com/BROngineer/argocd-notifier/issues/34)) ([10b76a0](https://github.com/BROngineer/argocd-notifier/commit/10b76a0e87a97eedc690f508e64a13d8a31a2145))
+
 ## [0.4.0](https://github.com/BROngineer/argocd-notifier/compare/v0.3.0...v0.4.0) (2026-09-20)
 
 
