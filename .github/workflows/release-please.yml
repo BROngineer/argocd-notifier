@@ -10,10 +10,23 @@ permissions:
   pull-requests: write
 
 jobs:
+  release-please-rc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          config-file: release-please-rc-config.json
+          manifest-file: .release-please-rc-manifest.json
+          token: ${{ secrets.AUTOMATION_TOKEN }}
+          target-branch: main
+          autoMergeRequest: true
+
   release-please:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
-        id: release
         with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
           token: ${{ secrets.AUTOMATION_TOKEN }}
+          target-branch: main
