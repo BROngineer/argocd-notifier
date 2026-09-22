@@ -25,6 +25,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: "${{ fromJson(steps.create-pr.outputs.pr).number }}"
         run: |
           MAX_ATTEMPTS=10
