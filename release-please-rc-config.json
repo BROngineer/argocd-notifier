@@ -11,6 +11,11 @@
       "include-v-in-tag": true,
       "include-v-in-release-name": true,
       "skip-changelog": true,
+      "changelog-sections": [
+        { "type": "feat", "hidden": false },
+        { "type": "fix", "hidden": false },
+        { "type": "chore", "hidden": false }
+      ],
       "extra-files": [
         { "type": "yaml", "path": "chart/Chart.yaml", "jsonpath": "$.appVersion" },
         { "type": "generic", "path": "chart/values.yaml" }
