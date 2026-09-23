@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/BROngineer/argocd-notifier/internal/notification"
@@ -70,9 +71,33 @@ type updateMessageRequest struct {
 }
 
 type apiResponse struct {
-	OK    bool   `json:"ok"`
-	Error string `json:"error"`
-	TS    string `json:"ts"`
+	OK      bool   `json:"ok"`
+	Error   string `json:"error"`
+	TS      string `json:"ts"`
+	Channel string `json:"channel"`
+}
+
+// refSeparator joins the channel ID Slack resolved at post time with the
+// message ts into one opaque ref string. chat.update requires the actual
+// channel ID — unlike chat.postMessage, it doesn't accept a channel name —
+// so later calls use the ID Slack itself returned rather than trusting
+// whatever recipient string was originally configured (which may well be a
+// human-friendly name).
+const refSeparator = "|"
+
+func encodeRef(channel, ts string) string {
+	return channel + refSeparator + ts
+}
+
+// decodeRef splits a ref produced by encodeRef back into (channel, ts). A
+// ref without the separator predates this format; fall back to recipient
+// as the channel, best-effort, rather than failing outright.
+func decodeRef(ref, recipient string) (channel, ts string) {
+	channel, ts, ok := strings.Cut(ref, refSeparator)
+	if !ok {
+		return recipient, ref
+	}
+	return channel, ts
 }
 
 // Post, Update, and PostThreadReply implement notification.Backend,
@@ -83,7 +108,11 @@ func (c *Client) Post(ctx context.Context, recipient string, n notification.Noti
 	if err != nil {
 		return "", fmt.Errorf("render notification: %w", err)
 	}
-	return c.call(ctx, "chat.postMessage", postMessageRequest{Channel: recipient, Text: text, Attachments: attachments})
+	out, err := c.call(ctx, "chat.postMessage", postMessageRequest{Channel: recipient, Text: text, Attachments: attachments})
+	if err != nil {
+		return "", err
+	}
+	return encodeRef(out.Channel, out.TS), nil
 }
 
 func (c *Client) Update(ctx context.Context, recipient, ref string, n notification.Notification) error {
@@ -91,19 +120,21 @@ func (c *Client) Update(ctx context.Context, recipient, ref string, n notificati
 	if err != nil {
 		return fmt.Errorf("render notification: %w", err)
 	}
-	_, err = c.call(ctx, "chat.update", updateMessageRequest{Channel: recipient, TS: ref, Text: text, Attachments: attachments})
+	channel, ts := decodeRef(ref, recipient)
+	_, err = c.call(ctx, "chat.update", updateMessageRequest{Channel: channel, TS: ts, Text: text, Attachments: attachments})
 	return err
 }
 
 func (c *Client) PostThreadReply(ctx context.Context, recipient, ref, text string) error {
-	_, err := c.call(ctx, "chat.postMessage", postMessageRequest{Channel: recipient, ThreadTS: ref, Text: text})
+	channel, ts := decodeRef(ref, recipient)
+	_, err := c.call(ctx, "chat.postMessage", postMessageRequest{Channel: channel, ThreadTS: ts, Text: text})
 	return err
 }
 
-func (c *Client) call(ctx context.Context, method string, body any) (string, error) {
+func (c *Client) call(ctx context.Context, method string, body any) (apiResponse, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+		return apiResponse{}, fmt.Errorf("marshal request: %w", err)
 	}
 
 	var lastErr error
@@ -112,48 +143,47 @@ func (c *Client) call(ctx context.Context, method string, body any) (string, err
 			select {
 			case <-time.After(backoff(attempt)):
 			case <-ctx.Done():
-				return "", ctx.Err()
+				return apiResponse{}, ctx.Err()
 			}
 		}
 
-		ts, retryable, err := c.attempt(ctx, method, b)
+		out, retryable, err := c.attempt(ctx, method, b)
 		if err == nil {
-			return ts, nil
+			return out, nil
 		}
 		lastErr = err
 		if !retryable {
-			return "", err
+			return apiResponse{}, err
 		}
 	}
 
-	return "", lastErr
+	return apiResponse{}, lastErr
 }
 
-func (c *Client) attempt(ctx context.Context, method string, body []byte) (ts string, retryable bool, err error) {
+func (c *Client) attempt(ctx context.Context, method string, body []byte) (out apiResponse, retryable bool, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/"+method, bytes.NewReader(body))
 	if err != nil {
-		return "", false, fmt.Errorf("build request: %w", err)
+		return apiResponse{}, false, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", true, err
+		return apiResponse{}, true, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	var out apiResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", true, fmt.Errorf("decode response: %w", err)
+		return apiResponse{}, true, fmt.Errorf("decode response: %w", err)
 	}
 
 	if out.OK {
-		return out.TS, false, nil
+		return out, false, nil
 	}
 
 	err = fmt.Errorf("slack api error: %s", out.Error)
-	return "", isRetryable(resp.StatusCode, out.Error), err
+	return apiResponse{}, isRetryable(resp.StatusCode, out.Error), err
 }
 
 func isRetryable(statusCode int, apiErr string) bool {
