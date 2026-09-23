@@ -33,6 +33,10 @@ type Event struct {
 	Images       []string          `json:"images,omitempty"`
 	InitiatedBy  string            `json:"initiatedBy,omitempty"`
 	ArgoCDURL    string            `json:"argocdUrl,omitempty"`
+	// TargetRevision is the Application's configured source revision (e.g.
+	// a git tag/branch like "v0.21.0") — distinct from Revision, which is
+	// the resolved commit SHA a tag/branch currently points at.
+	TargetRevision string `json:"targetRevision,omitempty"`
 }
 
 func (e Event) Validate() error {

@@ -120,6 +120,12 @@ components:
           type: string
         argocdUrl:
           type: string
+        targetRevision:
+          type: string
+          description: >-
+            The Application's configured source revision (e.g. a git tag/branch
+            like "v0.21.0") — distinct from revision, which is the resolved
+            commit SHA a tag/branch currently points at.
 
     RegisterBackendRequest:
       type: object

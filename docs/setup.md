@@ -81,6 +81,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
             "operationMessage": {{.app.status.operationState.message | default "" | trunc 500 | toJson}},
             "revision": {{$rev | toJson}},
             "repoURL": {{$src.repoURL | toJson}},
+            "targetRevision": {{$src.targetRevision | toJson}},
             "images": {{.app.status.summary.images | toJson}},
             "initiatedBy": {{if .app.status.operationState.operation.initiatedBy.username}}{{.app.status.operationState.operation.initiatedBy.username | toJson}}{{else}}"auto-sync"{{end}},
             "argocdUrl": {{.context.argocdUrl | toJson}},
@@ -107,6 +108,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
             "operationMessage": {{.app.status.operationState.message | default "" | trunc 500 | toJson}},
             "revision": {{$rev | toJson}},
             "repoURL": {{$src.repoURL | toJson}},
+            "targetRevision": {{$src.targetRevision | toJson}},
             "argocdUrl": {{.context.argocdUrl | toJson}},
             "recipient": {{.recipient | toJson}}
           }
@@ -117,6 +119,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
         method: POST
         path: /events
         body: |
+          {{$src := .app.spec.source}}{{if not $src}}{{$src = index .app.spec.sources 1}}{{end}}
           {
             "groupKey": {{index .app.metadata.labels "application/name" | default .app.metadata.name | toJson}},
             "labels": {{.app.metadata.labels | toJson}},
@@ -125,6 +128,7 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
             "backend": {{index .app.metadata.labels "application/backend" | toJson}},
             "trigger": "on-health-degraded",
             "healthStatus": {{.app.status.health.status | toJson}},
+            "targetRevision": {{$src.targetRevision | toJson}},
             "argocdUrl": {{.context.argocdUrl | toJson}},
             "recipient": {{.recipient | toJson}}
           }

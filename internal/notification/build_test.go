@@ -17,13 +17,14 @@ func TestBuild_NoEvents(t *testing.T) {
 
 func baseTestEvent(trigger string) event.Event {
 	return event.Event{
-		GroupKey:  "tatooine",
-		AppName:   "tatooine-dev-empire",
-		Trigger:   trigger,
-		Revision:  "abcdef1234567",
-		RepoURL:   "https://github.com/timescale/savannah-tatooine.git",
-		Target:    "dev-empire",
-		ArgoCDURL: "https://argocd.example.com",
+		GroupKey:       "tatooine",
+		AppName:        "tatooine-dev-empire",
+		Trigger:        trigger,
+		Revision:       "abcdef1234567",
+		RepoURL:        "https://github.com/timescale/savannah-tatooine.git",
+		Target:         "dev-empire",
+		ArgoCDURL:      "https://argocd.example.com",
+		TargetRevision: "v1.0.0",
 	}
 }
 
@@ -57,6 +58,32 @@ func TestBuild_Deployed(t *testing.T) {
 	}
 	if item.Link != "https://argocd.example.com/applications/tatooine-dev-empire" {
 		t.Errorf("Link = %q", item.Link)
+	}
+	if item.TargetRevision != "v1.0.0" {
+		t.Errorf("TargetRevision = %q, want v1.0.0", item.TargetRevision)
+	}
+}
+
+// TestBuild_TargetRevisionPopulatedForEveryTrigger confirms TargetRevision
+// isn't curated per-trigger the way CommitSHA/Fields are — every builder
+// carries it straight through, since a template author might want it
+// regardless of which trigger fired.
+func TestBuild_TargetRevisionPopulatedForEveryTrigger(t *testing.T) {
+	triggers := []string{
+		"on-created", "on-deleted", "on-deployed", "on-health-degraded",
+		"on-sync-failed", "on-sync-running", "on-sync-status-unknown", "on-sync-succeeded",
+	}
+	for _, trigger := range triggers {
+		t.Run(trigger, func(t *testing.T) {
+			ev := baseTestEvent(trigger)
+			n, err := Build(map[string]event.Event{ev.AppName: ev})
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+			if got := n.Items[0].TargetRevision; got != "v1.0.0" {
+				t.Errorf("TargetRevision = %q, want v1.0.0", got)
+			}
+		})
 	}
 }
 
