@@ -132,6 +132,10 @@ func (sp *SessionPublisher) Upsert(ctx context.Context, key SessionKey, events [
 				errs = append(errs, fmt.Errorf("build notification for %s/%s: %w", rk.Backend, rk.Recipient, err))
 				continue
 			}
+			sp.logger.Debug("sending aggregated notification to backend",
+				"backend", rk.Backend, "recipient", rk.Recipient,
+				"groupKey", key.GroupKey, "revision", key.Revision,
+				"notification", n)
 
 			backend, ok := sp.resolver.Resolve(rk.Backend)
 			if !ok {

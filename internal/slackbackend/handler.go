@@ -49,6 +49,7 @@ func (h *Handler) Notify(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "update failed", http.StatusInternalServerError)
 				return
 			}
+			h.logger.Debug("pushed notification content", "recipient", req.Recipient, "action", "update", "notification", n)
 			h.logger.Info("notification pushed", "recipient", req.Recipient, "action", "update", "ref", ref, "items", len(n.Items))
 			h.respondNotifyResult(w, ref)
 			return
@@ -61,6 +62,7 @@ func (h *Handler) Notify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "post failed", http.StatusInternalServerError)
 		return
 	}
+	h.logger.Debug("pushed notification content", "recipient", req.Recipient, "action", "post", "notification", n)
 	h.logger.Info("notification pushed", "recipient", req.Recipient, "action", "post", "ref", newRef, "items", len(n.Items))
 	h.respondNotifyResult(w, newRef)
 }

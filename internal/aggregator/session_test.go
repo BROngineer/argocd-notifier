@@ -181,6 +181,26 @@ func TestSessionPublisher_FirstUpsertPosts(t *testing.T) {
 	}
 }
 
+func TestSessionPublisher_Upsert_LogsSendToBackendAtDebug(t *testing.T) {
+	build := &buildCounter{}
+	backend := &fakeBackend{}
+	logger, logs := newRecordingLogger()
+	sp := newSessionPublisherWithClock(PublisherConfig{SessionTTL: time.Hour}, build.build, fakeResolver{"slack": backend}, logger, newFakeClock())
+
+	key := SessionKey{GroupKey: "tatooine", Revision: "rev-1"}
+	if err := sp.Upsert(context.Background(), key, []event.Event{baseEvent()}); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	logged := logs.String()
+	if !strings.Contains(logged, "level=DEBUG") || !strings.Contains(logged, "sending aggregated notification to backend") {
+		t.Fatalf("expected a DEBUG log for the outgoing notification, got %q", logged)
+	}
+	if !strings.Contains(logged, "backend=slack") || !strings.Contains(logged, "recipient=test1234asdf") {
+		t.Fatalf("expected the log to name the backend and recipient, got %q", logged)
+	}
+}
+
 func TestSessionPublisher_RealChangeCallsUpdate(t *testing.T) {
 	build := &buildCounter{}
 	backend := &fakeBackend{}
