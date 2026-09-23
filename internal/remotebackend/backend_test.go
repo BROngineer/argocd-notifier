@@ -199,7 +199,7 @@ func TestBackend_Notify_BaseURLRotationOnReregister(t *testing.T) {
 
 func TestToWireItem_OmitsUnsetOptionalFields(t *testing.T) {
 	wire := toWireItem(notification.Item{AppName: "a", Cluster: "c", Trigger: "on-deployed"})
-	if wire.CommitSHA != nil || wire.CommitURL != nil || wire.DetailText != nil || wire.Link != nil || wire.TriggeredBy != nil || wire.Images != nil || wire.Fields != nil {
+	if wire.CommitSHA != nil || wire.CommitURL != nil || wire.TargetRevision != nil || wire.DetailText != nil || wire.Link != nil || wire.TriggeredBy != nil || wire.Images != nil || wire.Fields != nil {
 		t.Fatalf("wire = %+v, want all optional fields nil", wire)
 	}
 }
@@ -207,12 +207,15 @@ func TestToWireItem_OmitsUnsetOptionalFields(t *testing.T) {
 func TestToWireItem_SetsOptionalFields(t *testing.T) {
 	item := notification.Item{
 		AppName: "a", Cluster: "c", Trigger: "on-deployed",
-		CommitSHA: "sha1", CommitURL: "https://x", DetailText: "detail", Link: "https://y",
+		CommitSHA: "sha1", CommitURL: "https://x", TargetRevision: "v0.21.0", DetailText: "detail", Link: "https://y",
 		TriggeredBy: "someone", Images: []string{"img1"}, Fields: []notification.Field{{Label: "l", Value: "v"}},
 	}
 	wire := toWireItem(item)
 	if wire.CommitSHA == nil || *wire.CommitSHA != "sha1" {
 		t.Fatalf("CommitSHA = %v, want sha1", wire.CommitSHA)
+	}
+	if wire.TargetRevision == nil || *wire.TargetRevision != "v0.21.0" {
+		t.Fatalf("TargetRevision = %v, want v0.21.0", wire.TargetRevision)
 	}
 	if wire.Images == nil || (*wire.Images)[0] != "img1" {
 		t.Fatalf("Images = %v, want [img1]", wire.Images)

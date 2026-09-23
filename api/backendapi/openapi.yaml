@@ -81,6 +81,8 @@ components:
           type: string
         commitSHA:
           type: string
+        targetRevision:
+          type: string
         triggeredBy:
           type: string
         images:

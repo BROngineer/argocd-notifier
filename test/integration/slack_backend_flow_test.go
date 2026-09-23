@@ -88,6 +88,63 @@ func TestSlackBackendFlow_RegistersAndDeliversViaRemoteBackendAdapter(t *testing
 	}
 }
 
+// TestSlackBackendFlow_TargetRevisionSurvivesWireRoundTrip guards against a
+// real bug: TargetRevision was added to notification.Item/event.Event but
+// the backendapi wire schema (and remotebackend.toWireItem/
+// slackbackend.fromWireItem) were never updated to carry it, so it silently
+// vanished on the core -> standalone-backend HTTP hop despite being present
+// on both sides of it. A custom template makes the value observable in the
+// final Slack payload without relying on DefaultRenderer, which doesn't
+// surface TargetRevision at all.
+func TestSlackBackendFlow_TargetRevisionSurvivesWireRoundTrip(t *testing.T) {
+	slackBaseURL, getSlackCalls := startMockSlack(t)
+
+	path := filepath.Join(t.TempDir(), "message.tmpl")
+	src := `{{define "text"}}{{.Summary}}{{end}}{{define "attachments"}}[{{range $i, $item := .Items}}{{if $i}},{{end}}{"color":"#000","blocks":[{"type":"section","text":{"type":"mrkdwn","text":"{{$item.TargetRevision}}"}}]}{{end}}]{{end}}`
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatalf("write template: %v", err)
+	}
+	watcher := slack.NewTemplateWatcher(path, false, testLogger())
+	watcher.Reload()
+
+	reg := registry.NewRegistry(time.Minute)
+	coreHTTPServer := httptest.NewServer(core.Handler(&coreServer{registry: registry.NewHandler(reg, testLogger())}))
+	t.Cleanup(coreHTTPServer.Close)
+
+	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL), slack.WithRenderer(watcher))
+	backendMux := http.NewServeMux()
+	backendapi.HandlerFromMux(slackbackend.NewHandler(slackClient, testLogger()), backendMux)
+	backendServer := httptest.NewServer(backendMux)
+	t.Cleanup(backendServer.Close)
+
+	if _, err := reg.Register("slack", backendServer.URL, false); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	resolver := remotebackend.NewResolver(reg, http.DefaultClient)
+	resolved, ok := resolver.Resolve("slack")
+	if !ok {
+		t.Fatal("Resolve(\"slack\") ok = false, want true")
+	}
+	notifier, ok := resolved.(notification.Notifier)
+	if !ok {
+		t.Fatalf("resolved backend = %T, want notification.Notifier", resolved)
+	}
+
+	n := notification.Notification{
+		Summary: "s",
+		Items:   []notification.Item{{AppName: "app-a", Cluster: "c", Trigger: "on-deployed", TargetRevision: "v0.21.0"}},
+	}
+	if _, err := notifier.Notify(context.Background(), "chan1", "", n); err != nil {
+		t.Fatalf("Notify() error = %v", err)
+	}
+
+	calls := waitForCallCount(t, getSlackCalls, 1)
+	if !strings.Contains(calls[0].attachments, "v0.21.0") {
+		t.Fatalf("attachments = %s, want TargetRevision (v0.21.0) to have survived the wire round trip", calls[0].attachments)
+	}
+}
+
 // TestSlackBackendFlow_CustomMessageTemplate wires a slack.TemplateWatcher
 // pointed at a temp file the same way cmd/slack-backend/main.go does when
 // MESSAGE_TEMPLATE_PATH is set, and proves the custom template's output —

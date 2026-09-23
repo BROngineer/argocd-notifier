@@ -29,6 +29,9 @@ func fromWireItem(item backendapi.Item) notification.Item {
 	if item.CommitURL != nil {
 		domain.CommitURL = *item.CommitURL
 	}
+	if item.TargetRevision != nil {
+		domain.TargetRevision = *item.TargetRevision
+	}
 	if item.DetailText != nil {
 		domain.DetailText = *item.DetailText
 	}

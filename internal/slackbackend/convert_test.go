@@ -19,13 +19,13 @@ func TestFromWireItem_OmitsUnsetOptionalFields(t *testing.T) {
 func TestFromWireItem_SetsOptionalFields(t *testing.T) {
 	wire := backendapi.Item{
 		AppName: "a", Cluster: "c", Trigger: "on-deployed",
-		CommitSHA: new("sha1"), CommitURL: new("https://x"), DetailText: new("detail"), Link: new("https://y"),
+		CommitSHA: new("sha1"), CommitURL: new("https://x"), TargetRevision: new("v0.21.0"), DetailText: new("detail"), Link: new("https://y"),
 		TriggeredBy: new("someone"), Images: new([]string{"img1"}), Fields: new([]backendapi.Field{{Label: "l", Value: "v"}}),
 	}
 	got := fromWireItem(wire)
 	want := notification.Item{
 		AppName: "a", Cluster: "c", Trigger: "on-deployed",
-		CommitSHA: "sha1", CommitURL: "https://x", DetailText: "detail", Link: "https://y",
+		CommitSHA: "sha1", CommitURL: "https://x", TargetRevision: "v0.21.0", DetailText: "detail", Link: "https://y",
 		TriggeredBy: "someone", Images: []string{"img1"}, Fields: []notification.Field{{Label: "l", Value: "v"}},
 	}
 	if !reflect.DeepEqual(got, want) {
