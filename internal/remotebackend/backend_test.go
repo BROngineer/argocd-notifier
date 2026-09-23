@@ -53,7 +53,7 @@ func TestBackend_Notify_Post(t *testing.T) {
 	fs.notifyRef = "msg-1"
 
 	reg := registry.NewRegistry(time.Minute)
-	if err := reg.Register("slack", fs.URL, false); err != nil {
+	if _, err := reg.Register("slack", fs.URL, false); err != nil {
 		t.Fatalf("Register() = %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestBackend_Notify_ReturnsNewRefOnEdit(t *testing.T) {
 	fs.notifyRef = "msg-2"
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fs.URL, false)
+	_, _ = reg.Register("slack", fs.URL, false)
 	b := New("slack", reg, http.DefaultClient)
 
 	ref, err := b.Notify(t.Context(), "chan1", "msg-1", notification.Notification{})
@@ -99,7 +99,7 @@ func TestBackend_Notify_UnexpectedStatus(t *testing.T) {
 	fs.notifyStatus = http.StatusInternalServerError
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fs.URL, false)
+	_, _ = reg.Register("slack", fs.URL, false)
 	b := New("slack", reg, http.DefaultClient)
 
 	if _, err := b.Notify(t.Context(), "chan1", "", notification.Notification{}); err == nil {
@@ -122,7 +122,7 @@ func TestBackend_PostThreadReply_Supported(t *testing.T) {
 	defer fs.Close()
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fs.URL, true)
+	_, _ = reg.Register("slack", fs.URL, true)
 	b := New("slack", reg, http.DefaultClient)
 
 	if err := b.PostThreadReply(t.Context(), "chan1", "msg-1", "again"); err != nil {
@@ -141,7 +141,7 @@ func TestBackend_PostThreadReply_NotSupported_NoRequestSent(t *testing.T) {
 	defer fs.Close()
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fs.URL, false)
+	_, _ = reg.Register("slack", fs.URL, false)
 	b := New("slack", reg, http.DefaultClient)
 
 	err := b.PostThreadReply(t.Context(), "chan1", "msg-1", "again")
@@ -158,14 +158,14 @@ func TestBackend_PostThreadReply_CapabilityChangesAcrossReregistration(t *testin
 	defer fs.Close()
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fs.URL, false)
+	_, _ = reg.Register("slack", fs.URL, false)
 	b := New("slack", reg, http.DefaultClient)
 
 	if err := b.PostThreadReply(t.Context(), "chan1", "msg-1", "x"); !errors.Is(err, ErrThreadReplyNotSupported) {
 		t.Fatalf("first PostThreadReply() error = %v, want ErrThreadReplyNotSupported", err)
 	}
 
-	_ = reg.Register("slack", fs.URL, true)
+	_, _ = reg.Register("slack", fs.URL, true)
 
 	if err := b.PostThreadReply(t.Context(), "chan1", "msg-1", "x"); err != nil {
 		t.Fatalf("second PostThreadReply() error = %v, want nil after capability turned on", err)
@@ -181,7 +181,7 @@ func TestBackend_Notify_BaseURLRotationOnReregister(t *testing.T) {
 	fsB.notifyRef = "from-b"
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fsA.URL, false)
+	_, _ = reg.Register("slack", fsA.URL, false)
 	b := New("slack", reg, http.DefaultClient)
 
 	ref, err := b.Notify(t.Context(), "chan1", "", notification.Notification{})
@@ -189,7 +189,7 @@ func TestBackend_Notify_BaseURLRotationOnReregister(t *testing.T) {
 		t.Fatalf("Notify() = (%q, %v), want (from-a, nil)", ref, err)
 	}
 
-	_ = reg.Register("slack", fsB.URL, false)
+	_, _ = reg.Register("slack", fsB.URL, false)
 
 	ref, err = b.Notify(t.Context(), "chan1", "", notification.Notification{})
 	if err != nil || ref != "from-b" {
@@ -227,7 +227,7 @@ func TestResolver_Resolve_Registered(t *testing.T) {
 	defer fs.Close()
 
 	reg := registry.NewRegistry(time.Minute)
-	_ = reg.Register("slack", fs.URL, false)
+	_, _ = reg.Register("slack", fs.URL, false)
 	resolver := NewResolver(reg, http.DefaultClient)
 
 	got, ok := resolver.Resolve("slack")

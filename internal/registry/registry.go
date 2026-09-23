@@ -52,7 +52,13 @@ func newRegistryWithClock(ttl time.Duration, clock Clock) *Registry {
 	}
 }
 
-func (r *Registry) Register(name, baseURL string, supportsThreadReply bool) error {
+// Register upserts a backend and reports whether this is a fresh
+// registration (the name was unknown, or had gone stale past ttl) as
+// opposed to a heartbeat refreshing an already-live one — callers use this
+// to log the two very differently: a heartbeat fires every RegisterInterval
+// forever, so logging it the same way as a genuine (re-)registration would
+// flood the logs.
+func (r *Registry) Register(name, baseURL string, supportsThreadReply bool) (isNew bool, err error) {
 	var errs []error
 	if name == "" {
 		errs = append(errs, ErrMissingName)
@@ -61,13 +67,16 @@ func (r *Registry) Register(name, baseURL string, supportsThreadReply bool) erro
 		errs = append(errs, ErrMissingBaseURL)
 	}
 	if len(errs) > 0 {
-		return errors.Join(errs...)
+		return false, errors.Join(errs...)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := r.clock.Now()
+	prior, existed := r.backends[name]
+	isNew = !existed || now.Sub(prior.LastSeen) > r.ttl
+
 	r.backends[name] = Backend{
 		Name:                name,
 		BaseURL:             strings.TrimSuffix(baseURL, "/"),
@@ -76,7 +85,7 @@ func (r *Registry) Register(name, baseURL string, supportsThreadReply bool) erro
 	}
 	r.pruneLocked(now, name)
 
-	return nil
+	return isNew, nil
 }
 
 func (r *Registry) Lookup(name string) (Backend, bool) {
