@@ -84,8 +84,8 @@ func TestRegistrar_RegistersImmediatelyAndHeartbeats(t *testing.T) {
 	if !strings.Contains(logged, "level=INFO") || !strings.Contains(logged, "msg=registered") {
 		t.Fatalf("expected an INFO log for the first registration, got %q", logged)
 	}
-	if !strings.Contains(logged, "heartbeat refreshed") {
-		t.Fatalf("expected an INFO log for the subsequent heartbeat, got %q", logged)
+	if !strings.Contains(logged, "level=DEBUG") || !strings.Contains(logged, "heartbeat refreshed") {
+		t.Fatalf("expected a DEBUG log for the subsequent heartbeat, got %q", logged)
 	}
 }
 

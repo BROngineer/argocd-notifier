@@ -25,8 +25,12 @@ func (c *fakeClock) Advance(d time.Duration) {
 func TestRegistry_RegisterAndLookup(t *testing.T) {
 	r := newRegistryWithClock(time.Minute, newFakeClock())
 
-	if err := r.Register("slack", "http://slack-backend:8080", true); err != nil {
+	isNew, err := r.Register("slack", "http://slack-backend:8080", true)
+	if err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
+	}
+	if !isNew {
+		t.Fatal("Register() isNew = false, want true for a name never seen before")
 	}
 
 	got, ok := r.Lookup("slack")
@@ -54,7 +58,7 @@ func TestRegistry_Register_MissingFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newRegistryWithClock(time.Minute, newFakeClock())
-			err := r.Register(tt.nameArg, tt.baseURL, false)
+			_, err := r.Register(tt.nameArg, tt.baseURL, false)
 			for _, want := range tt.wantErr {
 				if !errors.Is(err, want) {
 					t.Errorf("Register() = %v, want errors.Is(_, %v)", err, want)
@@ -67,7 +71,7 @@ func TestRegistry_Register_MissingFields(t *testing.T) {
 func TestRegistry_Register_TrimsTrailingSlash(t *testing.T) {
 	r := newRegistryWithClock(time.Minute, newFakeClock())
 
-	if err := r.Register("slack", "http://slack-backend:8080/", true); err != nil {
+	if _, err := r.Register("slack", "http://slack-backend:8080/", true); err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
 	}
 
@@ -84,13 +88,17 @@ func TestRegistry_Register_RefreshesHeartbeat(t *testing.T) {
 	clock := newFakeClock()
 	r := newRegistryWithClock(time.Minute, clock)
 
-	if err := r.Register("slack", "http://old:8080", false); err != nil {
+	if _, err := r.Register("slack", "http://old:8080", false); err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
 	}
 
 	clock.Advance(30 * time.Second)
-	if err := r.Register("slack", "http://new:8080", true); err != nil {
+	isNew, err := r.Register("slack", "http://new:8080", true)
+	if err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
+	}
+	if isNew {
+		t.Fatal("Register() isNew = true, want false for a heartbeat within ttl")
 	}
 
 	got, ok := r.Lookup("slack")
@@ -117,7 +125,7 @@ func TestRegistry_Lookup_StaleEntryNotFound(t *testing.T) {
 	clock := newFakeClock()
 	r := newRegistryWithClock(time.Minute, clock)
 
-	if err := r.Register("slack", "http://slack-backend:8080", false); err != nil {
+	if _, err := r.Register("slack", "http://slack-backend:8080", false); err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
 	}
 
@@ -128,11 +136,30 @@ func TestRegistry_Lookup_StaleEntryNotFound(t *testing.T) {
 	}
 }
 
+func TestRegistry_Register_IsNewAfterGoingStale(t *testing.T) {
+	clock := newFakeClock()
+	r := newRegistryWithClock(time.Minute, clock)
+
+	if _, err := r.Register("slack", "http://slack-backend:8080", false); err != nil {
+		t.Fatalf("Register() = %v, want nil", err)
+	}
+
+	clock.Advance(2 * time.Minute)
+
+	isNew, err := r.Register("slack", "http://slack-backend:8080", false)
+	if err != nil {
+		t.Fatalf("Register() = %v, want nil", err)
+	}
+	if !isNew {
+		t.Fatal("Register() isNew = false, want true when re-registering after the prior entry went stale")
+	}
+}
+
 func TestRegistry_Register_PrunesStaleEntries(t *testing.T) {
 	clock := newFakeClock()
 	r := newRegistryWithClock(time.Minute, clock)
 
-	if err := r.Register("stale", "http://stale:8080", false); err != nil {
+	if _, err := r.Register("stale", "http://stale:8080", false); err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
 	}
 	if got := r.Len(); got != 1 {
@@ -140,7 +167,7 @@ func TestRegistry_Register_PrunesStaleEntries(t *testing.T) {
 	}
 
 	clock.Advance(2 * time.Minute)
-	if err := r.Register("fresh", "http://fresh:8080", false); err != nil {
+	if _, err := r.Register("fresh", "http://fresh:8080", false); err != nil {
 		t.Fatalf("Register() = %v, want nil", err)
 	}
 

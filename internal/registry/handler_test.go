@@ -2,7 +2,6 @@ package registry
 
 import (
 	"bytes"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,10 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
 
 func newRecordingLogger() (*slog.Logger, *bytes.Buffer) {
 	var buf bytes.Buffer
@@ -78,7 +73,8 @@ func TestHandler_ValidRegistration(t *testing.T) {
 
 func TestHandler_RepeatedRegistration_Heartbeat(t *testing.T) {
 	reg := NewRegistry(time.Minute)
-	h := NewHandler(reg, testLogger())
+	logger, logs := newRecordingLogger()
+	h := NewHandler(reg, logger)
 
 	for range 2 {
 		req := httptest.NewRequest(http.MethodPost, "/v1/backends/register", strings.NewReader(validRegisterBody))
@@ -88,5 +84,12 @@ func TestHandler_RepeatedRegistration_Heartbeat(t *testing.T) {
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", rec.Code)
 		}
+	}
+
+	if got := strings.Count(logs.String(), "level=INFO"); got != 1 {
+		t.Fatalf("INFO log count = %d, want exactly 1 (only the first registration)", got)
+	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "backend heartbeat") {
+		t.Fatalf("expected a DEBUG log for the repeated registration, got %q", logs.String())
 	}
 }

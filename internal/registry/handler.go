@@ -32,12 +32,17 @@ func (h *Handler) RegisterBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.reg.Register(req.Name, req.BaseURL, req.SupportsThreadReply); err != nil {
+	isNew, err := h.reg.Register(req.Name, req.BaseURL, req.SupportsThreadReply)
+	if err != nil {
 		h.logger.Warn("registration rejected", "name", req.Name, "baseURL", req.BaseURL, "error", err)
 		http.Error(w, "invalid registration: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	h.logger.Info("backend registered", "name", req.Name, "baseURL", req.BaseURL, "supportsThreadReply", req.SupportsThreadReply)
+	if isNew {
+		h.logger.Info("backend registered", "name", req.Name, "baseURL", req.BaseURL, "supportsThreadReply", req.SupportsThreadReply)
+	} else {
+		h.logger.Debug("backend heartbeat", "name", req.Name, "baseURL", req.BaseURL)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

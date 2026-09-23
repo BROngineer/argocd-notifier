@@ -83,5 +83,5 @@ func (r *Registrar) register(ctx context.Context) {
 		r.logger.Info("registered", "name", r.name, "baseURL", r.baseURL, "supportsThreadReply", r.supportsThreadReply)
 		return
 	}
-	r.logger.Info("heartbeat refreshed", "name", r.name)
+	r.logger.Debug("heartbeat refreshed", "name", r.name)
 }
