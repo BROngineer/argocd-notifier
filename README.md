@@ -24,7 +24,7 @@ helm install argocd-notifier ./chart \
   --set slackBackend.slack.botToken=xoxb-your-bot-token
 ```
 
-See `slackBackend.*` in [`chart/values.yaml`](chart/values.yaml) for every setting (existing-Secret support, `coreURL`/`publicBaseURL` overrides, etc.), and [docs/setup.md](docs/setup.md) for the full walkthrough including required Slack bot scopes.
+See `slackBackend.*` in [`chart/values.yaml`](chart/values.yaml) for every setting (existing-Secret support, `coreURL`/`publicBaseURL` overrides, etc.), and [docs/setup.md](docs/setup.md) for the full walkthrough including required Slack bot scopes. Its message rendering is customizable too — see [docs/slack-message-templates.md](docs/slack-message-templates.md).
 
 Anything beyond Slack — email, PagerDuty, Teams, a custom webhook — is up to you: the core doesn't ship it and doesn't need to know about it in advance. Implement the self-registration and `/notify` contract described in [docs/adding-a-backend.md](docs/adding-a-backend.md), in any language, run it as your own process, and point it at the core.
 
@@ -32,6 +32,7 @@ Anything beyond Slack — email, PagerDuty, Teams, a custom webhook — is up to
 
 - [docs/design.md](docs/design.md) — how it works, and why
 - [docs/setup.md](docs/setup.md) — wiring ArgoCD's notifications-engine to argocd-notifier
+- [docs/slack-message-templates.md](docs/slack-message-templates.md) — customizing the Slack backend's message rendering
 - [docs/adding-a-backend.md](docs/adding-a-backend.md) — adding a notification backend
 - [docs/remote-backends.md](docs/remote-backends.md) — the self-registration design
 
