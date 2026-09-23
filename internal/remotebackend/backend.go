@@ -111,6 +111,9 @@ func toWireItem(item notification.Item) backendapi.Item {
 	if item.CommitURL != "" {
 		wire.CommitURL = new(item.CommitURL)
 	}
+	if item.TargetRevision != "" {
+		wire.TargetRevision = new(item.TargetRevision)
+	}
 	if item.DetailText != "" {
 		wire.DetailText = new(item.DetailText)
 	}

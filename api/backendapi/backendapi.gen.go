@@ -29,16 +29,17 @@ type Field struct {
 
 // Item defines model for Item.
 type Item struct {
-	AppName     string    `json:"appName"`
-	Cluster     string    `json:"cluster"`
-	CommitSHA   *string   `json:"commitSHA,omitempty"`
-	CommitURL   *string   `json:"commitURL,omitempty"`
-	DetailText  *string   `json:"detailText,omitempty"`
-	Fields      *[]Field  `json:"fields,omitempty"`
-	Images      *[]string `json:"images,omitempty"`
-	Link        *string   `json:"link,omitempty"`
-	Trigger     string    `json:"trigger"`
-	TriggeredBy *string   `json:"triggeredBy,omitempty"`
+	AppName        string    `json:"appName"`
+	Cluster        string    `json:"cluster"`
+	CommitSHA      *string   `json:"commitSHA,omitempty"`
+	CommitURL      *string   `json:"commitURL,omitempty"`
+	DetailText     *string   `json:"detailText,omitempty"`
+	Fields         *[]Field  `json:"fields,omitempty"`
+	Images         *[]string `json:"images,omitempty"`
+	Link           *string   `json:"link,omitempty"`
+	TargetRevision *string   `json:"targetRevision,omitempty"`
+	Trigger        string    `json:"trigger"`
+	TriggeredBy    *string   `json:"triggeredBy,omitempty"`
 }
 
 // Notification defines model for Notification.
@@ -757,21 +758,21 @@ var swaggerSpec = []string{
 	"zFXdahxHE32VYr4PnMBqVomdm/WVRBIicBwjyWAIuaidrt1pq6e7XVUjaRELeYg8YZ4kdPfsn3cki5BA",
 	"rjTarj5VderU6YeqCV0MnrxKNXuopGmpw/z5oyVn0kfkEInVUv7Z4Zxc+tBVpGpWibL1y2o9qW7R9TRy",
 	"sp5UTJ96y2Sq2a8DwCb8t8kmPMw/UqMJ6EKpO06MMb7FjkZTN64XJR4/C11n9eqnsydO31++GT01pGjd",
-	"Nd3r6PEiUZSLs0pd/vg/06KaVf+b7nidDqROC6PrbcfIjKv0v+1wSYc4R7k+v+OsvxkPZLtcEj91RuZ8",
-	"9eVBbQjf0bsDHxvb26B2YRtUG/zx+LadPYuqLIGRrqXvOuRnFL8JnAz5Hi14dUmfehI9rth/1s9T9R70",
-	"nktpbLTkx3WTgR4qQ9KwjQW/+qGLuoKO0AvEIAqe7l6DD/6E9k6UV6AByFgFba1ARyK4pLqafIGRXUmT",
-	"w9ZKPU8RJL0b4We0iwtDPmGTgLYEnO9av9zUCYvAgLDotWcqbaBq6rCGc2xuyJt0ExUa9C90iPArbROI",
-	"tKF3Bpi0Z59gmKSF7CRAt8QraNC51zl1E5jABBLwQUGZcGAMBdADMQd+Dmvj1Fy3TGguKbrHBfQ3RHDd",
-	"0pYpDcAJH3pvaKzUSaXjzvTE5FPW4d5xW+mi9YtwXNcV8S0ZmK8AgakLSrCvIZiX0U0AFe5a1DQMmKPQ",
-	"+8s3YBWYllaUmAzcWW0BeRkac1IwiF9IGddXQgQY7TT9Nw2RPEZbr7BzX9dwvRlqmnGWlxCQNzFYr1KG",
-	"PtQBPhewDSz36L6hqIXXUs60JWSdE2oNV5Tk0sgUjbF+eYInA1jdmUy+VVe86KD0bcqzdxfpVSOWQtk3",
-	"9Wl9moY0tFHNqpf1af2ymlQRtc0KmWaUbGdp5dPfJKDM6YWpZsMGVmWeJHoeTI5ugtdBWBijG8Yw/SjF",
-	"qootPcu0tvJdH8pGuaf8g8TgpQj629PTfzx59pac+1Bx35Ozt0kwdeLwVcl8GPIzukXgjpIh5B5y6Hcf",
-	"PhyHDmgrWKB1ZPYcIhuDFGdw9oaS2UDQlhiU0Uvam3yrZ6rzam3foA0q4MEy1HDmoXg202Lf0TF5+ma/",
-	"XwPuufsucl/Gg98dmj7qBgKsh+iwIbCLtGUNevjz9z8OIAw11pBAG+4SRoveOIJsqhsjld3KpjKYIpOk",
-	"Ye1Z+ATuWtu0O95EA5NklIgiJDkjBJ9DPN1rXr/s9+kXwY5ASNJ2TLeOVBidanbTk2x3jy/Dnuf+Sxsx",
-	"4urPWotXx4rLIHns/2kJvyu6lDaw7j83+Ym8t7L/dtfwi3fliSUDuETrRTdCG15tQ43DZPPSxxhYZY/S",
-	"GST20hNR/LeMNlW0Xv81AA==",
+	"Nd3r6PEiUZSLs0pd/vg/06KaVf+b7nidDqROC6PrbcfIjKv0v+1wSYc4R7k+v+OsvxkPRF6SXtKtFRv8",
+	"eAjb5ZL4qTMy56svz3Izk90EduBjk30b1C5sgzpUdjjhbfPPYjOrZIQY6bsO+RnFbwInQ75HC15d0qee",
+	"RI8r9p/181S9B73nUhobLflxaWWgh8qQNGxjwa9+6KKuoCP0AjGIgqe71+CDP6G9E+UVaAAyVkFbK9CR",
+	"CC6priZfYGRX0uSwtVLPUwRJ70b4Ge3iwpBP2CSgLQHnu9YvN3XCIjAgLHrtmUobqJo6rOEcmxvyJt1E",
+	"hQb9Cx0i/ErbBCJt6J0BJu3ZJxgmaSGbDdAt8QoadO51Tt0EJjCBBHxQUCYcGEMB9EDMgZ/D2jg11y0T",
+	"mkuK7nEB/Q0RXLe0ZUoDcMKH3hsaK3VS6bh5PTH5lHW4d9xWumj9IhzXdUV8SwbmK0Bg6oIS7GsI5mV0",
+	"E0CFuxY1DQPmKPT+8g1YBaalFSUmA3dWW0BehsacFAziF1LG9ZUQAUY7Tf9NQySP0dYr7NzXNVxvhppm",
+	"nOUlBORNDNarlKEPdYDPBWwDyz26byhq4bWUM20JWeeEWsMVJbk0MkVjrF+e4MkAVncmk2/VFS86KH2b",
+	"8uzdRXr4iIszV9/Up/VpGtLQRjWrXtan9ctqUkXUNitkmlGynaWVT3+TgDKnF6aaDRtYlXmS6HkwOboJ",
+	"XgdhYYxuGMP0oxSrKrb0LNPaynd9KBvlnvIPEoOXIuhvT0//8eTZW3LuQ8V9T87eJsHUicNXJfNhyM/o",
+	"FoE7SoaQe8ih3334cBw6oK1ggdaR2XOIbAxSnMHZG0pmA0FbYlBGL2lv8q2eqc6rtX2DNqiAB8tQw5mH",
+	"4tlMi31Hx+Tpm/1+Dbjn7rvIfRkPfndo+qgbCLAeosOGwC7SljXo4c/f/ziAMNRYQwJtuEsYLXrjCLKp",
+	"boxUdiubymCKTJKGtWfhE7hrbdPueBMNTJJRIoqQ5IwQfA7xdK95/bLfp18EOwIhSdsx3TpSYXSq2U1P",
+	"st09vgx7nvsvbcSIqz9rLV4dKy6D5LH/pyX8ruhS2sC6/9zkJ/Leyv7bXcMv3pUnlgzgEq0X3QhteLUN",
+	"NQ6TzUsfY2CVPUpnkNhLT0Tx3zLaVNF6/dcA",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
