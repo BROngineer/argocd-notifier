@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/BROngineer/argocd-notifier/compare/v0.5.0...v0.6.0) (2026-09-23)
+
+
+### Features
+
+* **event:** carry the Application's target revision ([#51](https://github.com/BROngineer/argocd-notifier/issues/51)) ([a407b63](https://github.com/BROngineer/argocd-notifier/commit/a407b63fed47b9db88021a6401765ea754042c40))
+* **logging:** add debug logs across the notification pipeline ([#58](https://github.com/BROngineer/argocd-notifier/issues/58)) ([0b5d0b7](https://github.com/BROngineer/argocd-notifier/commit/0b5d0b74af8a5ef5ce4d2647455fd3dbaff50ccd))
+* slack message templates chart ([#49](https://github.com/BROngineer/argocd-notifier/issues/49)) ([6f2d280](https://github.com/BROngineer/argocd-notifier/commit/6f2d2804668207ee77f78865666c73adf01ceb60))
+* **slack:** reload message templates from a watched file ([#47](https://github.com/BROngineer/argocd-notifier/issues/47)) ([b7339b8](https://github.com/BROngineer/argocd-notifier/commit/b7339b8ca0fcf829d09ada714d540127e873e2a9))
+* **slack:** support pluggable message renderers ([#44](https://github.com/BROngineer/argocd-notifier/issues/44)) ([9d688cb](https://github.com/BROngineer/argocd-notifier/commit/9d688cb2f4cf63403913ec5b62f314099bd8fd04))
+
+
+### Bug Fixes
+
+* **backendapi:** carry targetRevision across the wire to backends ([#60](https://github.com/BROngineer/argocd-notifier/issues/60)) ([c4de6c0](https://github.com/BROngineer/argocd-notifier/commit/c4de6c09fd0c3e9b8232acd4992563562d7ea554))
+* **docs:** quote a mermaid edge label containing brackets ([#56](https://github.com/BROngineer/argocd-notifier/issues/56)) ([9235c12](https://github.com/BROngineer/argocd-notifier/commit/9235c12e377efa82f4b847a37b53f549735bf349))
+* **registry:** log backend heartbeats at debug, not info ([#54](https://github.com/BROngineer/argocd-notifier/issues/54)) ([4cd4984](https://github.com/BROngineer/argocd-notifier/commit/4cd4984b0a4c57a9b5f775ad69d07c4c53be2009))
+* **slack:** use the resolved channel id for chat.update ([#63](https://github.com/BROngineer/argocd-notifier/issues/63)) ([12a031f](https://github.com/BROngineer/argocd-notifier/commit/12a031f6aee4ec63234564033be5ecc52d0740ea))
+
 ## [0.5.0](https://github.com/BROngineer/argocd-notifier/compare/v0.4.0...v0.5.0) (2026-09-22)
 
 
