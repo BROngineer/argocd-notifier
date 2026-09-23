@@ -35,12 +35,43 @@ server:
   ingestQueueSize: 1024
   workerCount: 4
 
+# Debounces events sharing groupLabel's value into one aggregated
+# notification per rollout, instead of one message per Application.
 aggregation:
+  # Label whose value groups Applications into one rollout (e.g. every
+  # per-cluster Application of the same service shares this label).
   groupLabel: "application/name"
+  # Resets on every new event for the group; the batch flushes once this
+  # much time passes with no further events — unless maxWait fires first.
   idleWindow: "30s"
+  # Hard cap on how long a busy/growing batch can be delayed: started once,
+  # on the batch's first event, and never reset — guarantees a rollout's
+  # first notification is never delayed indefinitely by continuous traffic.
   maxWait: "5m"
+  # true: every trigger (on-deployed, on-health-degraded, ...) for the same
+  # (groupLabel value, revision) shares one message/session. false: each
+  # trigger gets its own separate message/session, even for the same
+  # revision. Channel/recipient routing is independent of this either way —
+  # it's driven by each event's own subscribe-annotation recipient, so
+  # routing different triggers to different channels doesn't require false.
   combineTriggers: true
+  # How long a (groupLabel value, revision) session stays "live" after its
+  # last flush. Within this window, a new flush reuses the session's
+  # existing state (cumulative — reflecting every app seen so far, not just
+  # the latest batch) and updates the previous notification in place, if
+  # the resolved backend supports editing (implements Updater or Notifier);
+  # a backend that doesn't just gets a fresh notification every flush
+  # regardless. After this window elapses, the session is discarded and the
+  # next flush starts an entirely new one from scratch.
   sessionTTL: "45m"
+  # What to do when an app reports the exact same state again (identical
+  # trigger/revision/syncPhase/healthStatus/operationMessage) within an
+  # existing session: "drop" silently ignores it (default) — the main
+  # notification is already correct, so there's nothing to add; "thread"
+  # posts one reply per repeated app under the existing notification
+  # instead, without touching the main one. "thread" only has an effect if
+  # the resolved backend implements ThreadReplier — otherwise it behaves
+  # exactly like "drop", silently.
   duplicateAction: "drop"
 
 # Every notification backend is a separate process that self-registers here
@@ -161,6 +192,33 @@ slackBackend:
   #       ]
   #       {{end}}
   #       {{end}}
+  #
+  # Example 3 - message with one attachment, that collects target clusters,
+  # revisions and initiators:
+  #   messageTemplate:
+  #     content: |
+  #       {{define "text"}}:rocket: Application state update: {{.Summary}}{{end}}
+  #       {{define "attachments"}}
+  #       {{$revs := list}}
+  #       {{$clusters := list}}
+  #       {{$initiators := list}}
+  #       {{$groupKey := index (splitList " — " .Summary) 0}}
+  #       {{$argoBase := (index .Items 0).Link | trimSuffix (printf "/applications/%s" (index .Items 0).AppName)}}
+  #       {{range $item := .Items}}
+  #         {{$revs = append $revs $item.TargetRevision}}
+  #         {{$clusters = append $clusters $item.Cluster}}
+  #         {{$initiators = append $initiators $item.TriggeredBy}}
+  #       {{end}}
+  #       [{"color":"#18be52","blocks":[
+  #         {"type":"section","text":{"type":"mrkdwn","text":"*Clusters*: `{{$clusters | uniq | join ", "}}`"}},
+  #         {"type":"section","text":{"type":"mrkdwn","text":"*Deployed Revisions*: `{{$revs | uniq | join ", "}}`"}},
+  #         {"type":"section","text":{"type":"mrkdwn","text":"*Triggered By*: `{{$initiators | uniq | join ", "}}`"}},
+  #         {"type":"actions","elements":[
+  #           {"type":"button","text":{"type":"plain_text","text":"Open in ArgoCD"},"url":"{{$argoBase}}/applications?labels=application%2Fname%3D{{$groupKey}}"}
+  #         ]}
+  #       ]}]
+  #       {{end}}
+  #
   messageTemplate:
     content: ""
     existingConfigMap: ""

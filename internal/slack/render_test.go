@@ -97,8 +97,8 @@ func TestCommitText(t *testing.T) {
 	}{
 		{
 			name: "with url renders hyperlink",
-			item: notification.Item{CommitURL: "https://github.com/timescale/savannah-tatooine/commit/abcdef12", CommitSHA: "abcdef12"},
-			want: "<https://github.com/timescale/savannah-tatooine/commit/abcdef12|`abcdef12`>",
+			item: notification.Item{CommitURL: "https://github.com/new-republic/tatooine/commit/abcdef12", CommitSHA: "abcdef12"},
+			want: "<https://github.com/new-republic/tatooine/commit/abcdef12|`abcdef12`>",
 		},
 		{
 			name: "without url renders plain text",
