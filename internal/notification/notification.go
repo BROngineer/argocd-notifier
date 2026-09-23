@@ -13,16 +13,20 @@ type Field struct {
 // so no backend-specific markup (e.g. Slack's "<url|text>") leaks into the
 // domain model.
 type Item struct {
-	AppName     string
-	Cluster     string
-	Trigger     string
-	CommitURL   string
-	CommitSHA   string
-	TriggeredBy string
-	Images      []string
-	Fields      []Field
-	DetailText  string
-	Link        string
+	AppName   string
+	Cluster   string
+	Trigger   string
+	CommitURL string
+	CommitSHA string
+	// TargetRevision is the Application's configured source revision (e.g.
+	// a git tag/branch like "v0.21.0") — distinct from CommitSHA, which is
+	// the resolved commit a tag/branch currently points at.
+	TargetRevision string
+	TriggeredBy    string
+	Images         []string
+	Fields         []Field
+	DetailText     string
+	Link           string
 }
 
 type Notification struct {

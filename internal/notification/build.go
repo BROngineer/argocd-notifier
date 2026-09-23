@@ -70,78 +70,84 @@ func summary(groupKey string, counts map[string]int) string {
 }
 
 func buildCreatedItem(ev event.Event) Item {
-	return Item{AppName: ev.AppName, Cluster: cluster(ev), Trigger: ev.Trigger, Link: argoCDLink(ev)}
+	return Item{AppName: ev.AppName, Cluster: cluster(ev), Trigger: ev.Trigger, TargetRevision: ev.TargetRevision, Link: argoCDLink(ev)}
 }
 
 // buildDeletedItem leaves Link empty — the Application no longer exists to open.
 func buildDeletedItem(ev event.Event) Item {
-	return Item{AppName: ev.AppName, Cluster: cluster(ev), Trigger: ev.Trigger}
+	return Item{AppName: ev.AppName, Cluster: cluster(ev), Trigger: ev.Trigger, TargetRevision: ev.TargetRevision}
 }
 
 func buildDeployedItem(ev event.Event) Item {
 	return Item{
-		AppName:     ev.AppName,
-		Cluster:     cluster(ev),
-		Trigger:     ev.Trigger,
-		CommitURL:   commitURL(ev),
-		CommitSHA:   commitSHA(ev),
-		TriggeredBy: orDefault(ev.InitiatedBy, "auto-sync"),
-		Images:      ev.Images,
-		Link:        argoCDLink(ev),
+		AppName:        ev.AppName,
+		Cluster:        cluster(ev),
+		Trigger:        ev.Trigger,
+		CommitURL:      commitURL(ev),
+		CommitSHA:      commitSHA(ev),
+		TargetRevision: ev.TargetRevision,
+		TriggeredBy:    orDefault(ev.InitiatedBy, "auto-sync"),
+		Images:         ev.Images,
+		Link:           argoCDLink(ev),
 	}
 }
 
 func buildSyncFailedItem(ev event.Event) Item {
 	return Item{
-		AppName:    ev.AppName,
-		Cluster:    cluster(ev),
-		Trigger:    ev.Trigger,
-		Fields:     []Field{{Label: "Phase", Value: ev.SyncPhase}},
-		DetailText: truncate(ev.OperationMsg, 300),
-		Link:       argoCDLink(ev),
+		AppName:        ev.AppName,
+		Cluster:        cluster(ev),
+		Trigger:        ev.Trigger,
+		TargetRevision: ev.TargetRevision,
+		Fields:         []Field{{Label: "Phase", Value: ev.SyncPhase}},
+		DetailText:     truncate(ev.OperationMsg, 300),
+		Link:           argoCDLink(ev),
 	}
 }
 
 func buildHealthDegradedItem(ev event.Event) Item {
 	return Item{
-		AppName: ev.AppName,
-		Cluster: cluster(ev),
-		Trigger: ev.Trigger,
-		Fields:  []Field{{Label: "Health", Value: ":large_yellow_circle: Degraded"}},
-		Link:    argoCDLink(ev),
+		AppName:        ev.AppName,
+		Cluster:        cluster(ev),
+		Trigger:        ev.Trigger,
+		TargetRevision: ev.TargetRevision,
+		Fields:         []Field{{Label: "Health", Value: ":large_yellow_circle: Degraded"}},
+		Link:           argoCDLink(ev),
 	}
 }
 
 func buildSyncRunningItem(ev event.Event) Item {
 	return Item{
-		AppName:     ev.AppName,
-		Cluster:     cluster(ev),
-		Trigger:     ev.Trigger,
-		CommitURL:   commitURL(ev),
-		CommitSHA:   commitSHA(ev),
-		TriggeredBy: orDefault(ev.InitiatedBy, "auto-sync"),
-		Link:        argoCDLink(ev),
+		AppName:        ev.AppName,
+		Cluster:        cluster(ev),
+		Trigger:        ev.Trigger,
+		CommitURL:      commitURL(ev),
+		CommitSHA:      commitSHA(ev),
+		TargetRevision: ev.TargetRevision,
+		TriggeredBy:    orDefault(ev.InitiatedBy, "auto-sync"),
+		Link:           argoCDLink(ev),
 	}
 }
 
 func buildSyncStatusUnknownItem(ev event.Event) Item {
 	return Item{
-		AppName: ev.AppName,
-		Cluster: cluster(ev),
-		Trigger: ev.Trigger,
-		Fields:  []Field{{Label: "Sync Status", Value: orDefault(ev.SyncStatus, "Unknown")}},
-		Link:    argoCDLink(ev),
+		AppName:        ev.AppName,
+		Cluster:        cluster(ev),
+		Trigger:        ev.Trigger,
+		TargetRevision: ev.TargetRevision,
+		Fields:         []Field{{Label: "Sync Status", Value: orDefault(ev.SyncStatus, "Unknown")}},
+		Link:           argoCDLink(ev),
 	}
 }
 
 func buildSyncSucceededItem(ev event.Event) Item {
 	return Item{
-		AppName:   ev.AppName,
-		Cluster:   cluster(ev),
-		Trigger:   ev.Trigger,
-		CommitURL: commitURL(ev),
-		CommitSHA: commitSHA(ev),
-		Link:      argoCDLink(ev),
+		AppName:        ev.AppName,
+		Cluster:        cluster(ev),
+		Trigger:        ev.Trigger,
+		CommitURL:      commitURL(ev),
+		CommitSHA:      commitSHA(ev),
+		TargetRevision: ev.TargetRevision,
+		Link:           argoCDLink(ev),
 	}
 }
 
