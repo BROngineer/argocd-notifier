@@ -114,3 +114,19 @@ http://{{ include "argocd-notifier.fullname" . }}.{{ .Release.Namespace }}.svc.c
 http://{{ include "argocd-notifier.slackBackendFullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.slackBackend.service.port }}
 {{- end -}}
 {{- end -}}
+
+{{- define "argocd-notifier.slackBackendMessageTemplateFullname" -}}
+{{- printf "%s-message-template" (include "argocd-notifier.slackBackendFullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "argocd-notifier.slackBackendMessageTemplateConfigMapName" -}}
+{{- default (include "argocd-notifier.slackBackendMessageTemplateFullname" .) .Values.slackBackend.messageTemplate.existingConfigMap -}}
+{{- end -}}
+
+{{- define "argocd-notifier.slackBackendMessageTemplateConfigMapKey" -}}
+{{- if .Values.slackBackend.messageTemplate.existingConfigMap -}}
+{{- default "message.tmpl" .Values.slackBackend.messageTemplate.existingConfigMapKey -}}
+{{- else -}}
+message.tmpl
+{{- end -}}
+{{- end -}}
