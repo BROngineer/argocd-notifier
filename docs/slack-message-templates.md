@@ -35,7 +35,7 @@ type Notification struct {
 | Field            | Type       | Notes |
 |------------------|------------|-------|
 | `AppName`        | `string`   | |
-| `Cluster`        | `string`   | From the `target` label you configured (e.g. `cd.tigerdata.com/target`). |
+| `Cluster`        | `string`   | From the `target` label you configured (e.g. `application/target`). |
 | `Trigger`        | `string`   | e.g. `on-deployed`, `on-health-degraded` — one of ArgoCD's 8 built-in triggers. |
 | `CommitURL`      | `string`   | Link to the resolved commit; empty if `repoURL`/`revision` weren't available. |
 | `CommitSHA`      | `string`   | The **resolved commit SHA** (truncated to 8 chars) — not the configured tag/branch. `"?"` if unavailable. |

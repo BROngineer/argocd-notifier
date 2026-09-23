@@ -21,7 +21,7 @@ func baseTestEvent(trigger string) event.Event {
 		AppName:        "tatooine-dev-empire",
 		Trigger:        trigger,
 		Revision:       "abcdef1234567",
-		RepoURL:        "https://github.com/timescale/savannah-tatooine.git",
+		RepoURL:        "https://github.com/new-republic/tatooine.git",
 		Target:         "dev-empire",
 		ArgoCDURL:      "https://argocd.example.com",
 		TargetRevision: "v1.0.0",
@@ -44,7 +44,7 @@ func TestBuild_Deployed(t *testing.T) {
 	if item.Cluster != "dev-empire" {
 		t.Errorf("Cluster = %q", item.Cluster)
 	}
-	if item.CommitURL != "https://github.com/timescale/savannah-tatooine/commit/abcdef1234567" {
+	if item.CommitURL != "https://github.com/new-republic/tatooine/commit/abcdef1234567" {
 		t.Errorf("CommitURL = %q", item.CommitURL)
 	}
 	if item.CommitSHA != "abcdef12" {
@@ -185,9 +185,9 @@ func TestCommitURLAndSHA(t *testing.T) {
 	}{
 		{
 			name:     "trims .git and shortens revision",
-			repoURL:  "https://github.com/timescale/savannah-tatooine.git",
+			repoURL:  "https://github.com/new-republic/tatooine.git",
 			revision: "abcdef1234567",
-			wantURL:  "https://github.com/timescale/savannah-tatooine/commit/abcdef1234567",
+			wantURL:  "https://github.com/new-republic/tatooine/commit/abcdef1234567",
 			wantSHA:  "abcdef12",
 		},
 		{name: "empty repo means no url", repoURL: "", revision: "abcdef1234567", wantURL: "", wantSHA: "abcdef12"},
