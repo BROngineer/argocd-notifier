@@ -2,6 +2,10 @@
 {{- if not (or .Values.slackBackend.slack.botToken .Values.slackBackend.slack.existingSecret) }}
 {{ fail "one of slackBackend.slack.botToken or slackBackend.slack.existingSecret must be set when slackBackend.enabled=true" }}
 {{- end }}
+{{- if and .Values.slackBackend.messageTemplate.content .Values.slackBackend.messageTemplate.existingConfigMap }}
+{{ fail "set at most one of slackBackend.messageTemplate.content or slackBackend.messageTemplate.existingConfigMap" }}
+{{- end }}
+{{- $messageTemplateEnabled := or .Values.slackBackend.messageTemplate.content .Values.slackBackend.messageTemplate.existingConfigMap }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -57,6 +61,14 @@ spec:
               value: {{ .Values.slackBackend.logging.level | quote }}
             - name: LOG_FORMAT
               value: {{ .Values.slackBackend.logging.format | quote }}
+            {{- if $messageTemplateEnabled }}
+            - name: MESSAGE_TEMPLATE_PATH
+              value: "/etc/argocd-notifier/message-template/{{ include "argocd-notifier.slackBackendMessageTemplateConfigMapKey" . }}"
+            - name: MESSAGE_TEMPLATE_RELOAD_INTERVAL
+              value: {{ .Values.slackBackend.messageTemplate.reloadInterval | quote }}
+            - name: MESSAGE_TEMPLATE_FALLBACK_TO_DEFAULT
+              value: {{ .Values.slackBackend.messageTemplate.fallbackToDefault | quote }}
+            {{- end }}
             {{- with .Values.slackBackend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -70,6 +82,18 @@ spec:
               port: http
           resources:
             {{- toYaml .Values.slackBackend.resources | nindent 12 }}
+          {{- if $messageTemplateEnabled }}
+          volumeMounts:
+            - name: message-template
+              mountPath: /etc/argocd-notifier/message-template
+              readOnly: true
+          {{- end }}
+      {{- if $messageTemplateEnabled }}
+      volumes:
+        - name: message-template
+          configMap:
+            name: {{ include "argocd-notifier.slackBackendMessageTemplateConfigMapName" . }}
+      {{- end }}
       {{- with .Values.slackBackend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

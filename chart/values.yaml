@@ -106,6 +106,22 @@ slackBackend:
   # Must stay comfortably under the core's backendRegistry.ttl above.
   registerInterval: "30s"
 
+  # Custom Slack message template (see docs/slack-message-templates.md) —
+  # optional; leaving content and existingConfigMap both empty (the default)
+  # keeps the built-in per-trigger rendering unchanged. Set at most one of
+  # content (rendered into a ConfigMap this chart creates) or
+  # existingConfigMap (one you manage yourself), mirroring
+  # slackBackend.slack.botToken/existingSecret above.
+  messageTemplate:
+    content: ""
+    existingConfigMap: ""
+    existingConfigMapKey: "message.tmpl"
+    reloadInterval: "30s"
+    # When the template fails to render a specific notification: true falls
+    # back to the built-in rendering so the message still gets sent; false
+    # logs and drops just that notification instead.
+    fallbackToDefault: false
+
   logging:
     level: "info"
     format: "json"

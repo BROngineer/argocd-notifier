@@ -1,0 +1,11 @@
+{{- if and .Values.slackBackend.enabled .Values.slackBackend.messageTemplate.content (not .Values.slackBackend.messageTemplate.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-notifier.slackBackendMessageTemplateFullname" . }}
+  labels:
+    {{- include "argocd-notifier.slackBackendLabels" . | nindent 4 }}
+data:
+  {{ include "argocd-notifier.slackBackendMessageTemplateConfigMapKey" . }}: |
+    {{- .Values.slackBackend.messageTemplate.content | nindent 4 }}
+{{- end }}
