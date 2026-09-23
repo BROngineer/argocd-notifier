@@ -148,6 +148,9 @@ func TestHandler_Notify_EmptyRefPosts(t *testing.T) {
 	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "action=post") {
 		t.Fatalf("expected an INFO log about the pushed notification, got %q", logs.String())
 	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "pushed notification content") {
+		t.Fatalf("expected a DEBUG log with the full pushed notification content, got %q", logs.String())
+	}
 }
 
 func TestHandler_Notify_NonEmptyRefUpdates(t *testing.T) {
@@ -174,6 +177,9 @@ func TestHandler_Notify_NonEmptyRefUpdates(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "action=update") {
 		t.Fatalf("expected an INFO log about the pushed update, got %q", logs.String())
+	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "pushed notification content") {
+		t.Fatalf("expected a DEBUG log with the full pushed notification content, got %q", logs.String())
 	}
 }
 

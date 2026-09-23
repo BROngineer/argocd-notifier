@@ -74,6 +74,12 @@ func TestHandler_ValidEvent_AcceptedAndEnqueued(t *testing.T) {
 	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "tatooine-dev") {
 		t.Fatalf("expected an INFO log naming the accepted event, got %q", logs.String())
 	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "event received from argocd") {
+		t.Fatalf("expected a DEBUG log with the full received event, got %q", logs.String())
+	}
+	if !strings.Contains(logs.String(), "rev-1") {
+		t.Fatalf("expected the DEBUG log to include the full event body (e.g. revision), got %q", logs.String())
+	}
 }
 
 func TestHandler_QueueFull(t *testing.T) {

@@ -41,6 +41,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case h.ch <- ev:
+		h.logger.Debug("event received from argocd", "event", ev)
 		h.logger.Info("event accepted", "groupKey", ev.GroupKey, "appName", ev.AppName, "trigger", ev.Trigger, "backend", ev.Backend)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
