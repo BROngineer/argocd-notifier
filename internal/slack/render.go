@@ -1,11 +1,41 @@
 package slack
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/BROngineer/argocd-notifier/internal/notification"
 )
+
+// Renderer turns an aggregated Notification into a Slack message body — text
+// is chat.postMessage/chat.update's top-level "text", attachments is a raw
+// JSON value (an "attachments" array, or a "blocks" array a custom template
+// builds instead) embedded as-is into the request. Injected into Client so a
+// user-supplied template (TemplateRenderer) can replace the built-in
+// per-trigger rendering without Client itself knowing the difference.
+type Renderer interface {
+	Render(n notification.Notification) (text string, attachments json.RawMessage, err error)
+}
+
+// DefaultRenderer is the built-in, always-available renderer: one colored
+// attachment per app Item, via the per-trigger builders below. Used when no
+// custom template is configured, and as the safe fallback when one fails.
+type DefaultRenderer struct{}
+
+var _ Renderer = DefaultRenderer{}
+
+func (DefaultRenderer) Render(n notification.Notification) (string, json.RawMessage, error) {
+	text, attachments := renderNotification(n)
+	if len(attachments) == 0 {
+		return text, nil, nil
+	}
+	raw, err := json.Marshal(attachments)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal attachments: %w", err)
+	}
+	return text, raw, nil
+}
 
 type attachment struct {
 	Color  string           `json:"color"`

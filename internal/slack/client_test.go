@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,12 +14,15 @@ import (
 	"github.com/BROngineer/argocd-notifier/internal/notification"
 )
 
+var errRenderFailed = errors.New("render failed")
+
 func newTestClient(baseURL string, maxRetries int) *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: 2 * time.Second},
 		token:      "test-token",
 		baseURL:    baseURL,
 		maxRetries: maxRetries,
+		renderer:   DefaultRenderer{},
 	}
 }
 
@@ -26,6 +30,60 @@ func TestNewClient_WithBaseURL(t *testing.T) {
 	c := NewClient("test-token", time.Second, 0, WithBaseURL("https://example.com/api"))
 	if c.baseURL != "https://example.com/api" {
 		t.Fatalf("baseURL = %q, want https://example.com/api", c.baseURL)
+	}
+}
+
+func TestNewClient_DefaultsToDefaultRenderer(t *testing.T) {
+	c := NewClient("test-token", time.Second, 0)
+	if _, ok := c.renderer.(DefaultRenderer); !ok {
+		t.Fatalf("renderer = %T, want DefaultRenderer", c.renderer)
+	}
+}
+
+type fakeRenderer struct {
+	text        string
+	attachments json.RawMessage
+	err         error
+}
+
+func (f fakeRenderer) Render(notification.Notification) (string, json.RawMessage, error) {
+	return f.text, f.attachments, f.err
+}
+
+func TestClient_Post_UsesInjectedRendererVerbatim(t *testing.T) {
+	var gotBody postMessageRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewEncoder(w).Encode(apiResponse{OK: true, TS: "111.222"})
+	}))
+	defer server.Close()
+
+	custom := json.RawMessage(`[{"color":"#custom","blocks":[]}]`)
+	c := newTestClient(server.URL, 0)
+	c.renderer = fakeRenderer{text: "custom text", attachments: custom}
+
+	if _, err := c.Post(context.Background(), "chan1", notification.Notification{}); err != nil {
+		t.Fatalf("Post() error = %v", err)
+	}
+	if gotBody.Text != "custom text" {
+		t.Fatalf("text = %q, want %q", gotBody.Text, "custom text")
+	}
+	if string(gotBody.Attachments) != string(custom) {
+		t.Fatalf("attachments = %s, want %s", gotBody.Attachments, custom)
+	}
+}
+
+func TestClient_Post_RendererErrorPropagates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("request should not reach the server when rendering fails")
+	}))
+	defer server.Close()
+
+	c := newTestClient(server.URL, 0)
+	c.renderer = fakeRenderer{err: errRenderFailed}
+
+	if _, err := c.Post(context.Background(), "chan1", notification.Notification{}); !errors.Is(err, errRenderFailed) {
+		t.Fatalf("Post() error = %v, want wrapping %v", err, errRenderFailed)
 	}
 }
 

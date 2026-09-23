@@ -24,6 +24,7 @@ type Client struct {
 	token      string
 	baseURL    string
 	maxRetries int
+	renderer   Renderer
 }
 
 type Option func(*Client)
@@ -34,12 +35,19 @@ func WithBaseURL(baseURL string) Option {
 	return func(c *Client) { c.baseURL = baseURL }
 }
 
+// WithRenderer overrides the built-in per-trigger rendering (DefaultRenderer)
+// — e.g. with a TemplateRenderer, or a fallback wrapper around one.
+func WithRenderer(r Renderer) Option {
+	return func(c *Client) { c.renderer = r }
+}
+
 func NewClient(token string, timeout time.Duration, maxRetries int, opts ...Option) *Client {
 	c := &Client{
 		httpClient: &http.Client{Timeout: timeout},
 		token:      token,
 		baseURL:    defaultBaseURL,
 		maxRetries: maxRetries,
+		renderer:   DefaultRenderer{},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -48,17 +56,17 @@ func NewClient(token string, timeout time.Duration, maxRetries int, opts ...Opti
 }
 
 type postMessageRequest struct {
-	Channel     string       `json:"channel"`
-	ThreadTS    string       `json:"thread_ts,omitempty"`
-	Text        string       `json:"text"`
-	Attachments []attachment `json:"attachments,omitempty"`
+	Channel     string          `json:"channel"`
+	ThreadTS    string          `json:"thread_ts,omitempty"`
+	Text        string          `json:"text"`
+	Attachments json.RawMessage `json:"attachments,omitempty"`
 }
 
 type updateMessageRequest struct {
-	Channel     string       `json:"channel"`
-	TS          string       `json:"ts"`
-	Text        string       `json:"text"`
-	Attachments []attachment `json:"attachments,omitempty"`
+	Channel     string          `json:"channel"`
+	TS          string          `json:"ts"`
+	Text        string          `json:"text"`
+	Attachments json.RawMessage `json:"attachments,omitempty"`
 }
 
 type apiResponse struct {
@@ -71,13 +79,19 @@ type apiResponse struct {
 // notification.Updater, and notification.ThreadReplier respectively.
 
 func (c *Client) Post(ctx context.Context, recipient string, n notification.Notification) (string, error) {
-	text, attachments := renderNotification(n)
+	text, attachments, err := c.renderer.Render(n)
+	if err != nil {
+		return "", fmt.Errorf("render notification: %w", err)
+	}
 	return c.call(ctx, "chat.postMessage", postMessageRequest{Channel: recipient, Text: text, Attachments: attachments})
 }
 
 func (c *Client) Update(ctx context.Context, recipient, ref string, n notification.Notification) error {
-	text, attachments := renderNotification(n)
-	_, err := c.call(ctx, "chat.update", updateMessageRequest{Channel: recipient, TS: ref, Text: text, Attachments: attachments})
+	text, attachments, err := c.renderer.Render(n)
+	if err != nil {
+		return fmt.Errorf("render notification: %w", err)
+	}
+	_, err = c.call(ctx, "chat.update", updateMessageRequest{Channel: recipient, TS: ref, Text: text, Attachments: attachments})
 	return err
 }
 
