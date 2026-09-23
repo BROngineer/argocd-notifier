@@ -24,10 +24,12 @@ func testLogger() *slog.Logger {
 }
 
 type slackCall struct {
-	path      string
-	channel   string
-	requestTS string
-	respTS    string
+	path        string
+	channel     string
+	requestTS   string
+	respTS      string
+	text        string
+	attachments string
 }
 
 func startMockSlack(t *testing.T) (baseURL string, getCalls func() []slackCall) {
@@ -36,10 +38,25 @@ func startMockSlack(t *testing.T) (baseURL string, getCalls func() []slackCall) 
 	var counter atomic.Int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw map[string]json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		for k, v := range raw {
+			var decoded any
+			_ = json.Unmarshal(v, &decoded)
+			if body == nil {
+				body = map[string]any{}
+			}
+			body[k] = decoded
+		}
 		channel, _ := body["channel"].(string)
 		requestTS, _ := body["ts"].(string)
+		text, _ := body["text"].(string)
+		var attachments string
+		if v, ok := raw["attachments"]; ok {
+			attachments = string(v)
+		}
 
 		respTS := requestTS
 		if respTS == "" {
@@ -47,7 +64,7 @@ func startMockSlack(t *testing.T) (baseURL string, getCalls func() []slackCall) 
 		}
 
 		mu.Lock()
-		calls = append(calls, slackCall{path: r.URL.Path, channel: channel, requestTS: requestTS, respTS: respTS})
+		calls = append(calls, slackCall{path: r.URL.Path, channel: channel, requestTS: requestTS, respTS: respTS, text: text, attachments: attachments})
 		mu.Unlock()
 
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "ts": respTS})
