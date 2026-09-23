@@ -67,7 +67,11 @@ func startMockSlack(t *testing.T) (baseURL string, getCalls func() []slackCall) 
 		calls = append(calls, slackCall{path: r.URL.Path, channel: channel, requestTS: requestTS, respTS: respTS, text: text, attachments: attachments})
 		mu.Unlock()
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "ts": respTS})
+		// Real Slack resolves whatever channel value a request named (often
+		// a human-friendly name) to a canonical channel ID in its response -
+		// simulated here with a distinct prefix so a test can tell apart
+		// "used the raw recipient" from "used the resolved ID from ref".
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "ts": respTS, "channel": "resolved-" + channel})
 	}))
 	t.Cleanup(server.Close)
 
@@ -167,6 +171,15 @@ func TestAggregationFlow_PostThenUpdateSameTS(t *testing.T) {
 	}
 	if secondCalls[1].requestTS != postedTS {
 		t.Fatalf("update ts = %q, want %q (same message edited in place)", secondCalls[1].requestTS, postedTS)
+	}
+	// Regression coverage for the channel_not_found bug: chat.update must
+	// use the channel ID Slack resolved at post time ("resolved-chan1"),
+	// not the raw "recipient" the aggregator was configured with ("chan1")
+	// — sending the latter to a real chat.update is exactly what produced
+	// channel_not_found in production.
+	wantChannel := "resolved-" + firstCalls[0].channel
+	if secondCalls[1].channel != wantChannel {
+		t.Fatalf("update channel = %q, want %q (the resolved channel ID from the original post, not the raw recipient)", secondCalls[1].channel, wantChannel)
 	}
 }
 
