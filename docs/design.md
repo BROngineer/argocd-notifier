@@ -83,7 +83,7 @@ flowchart TD
     P -->|no| P1["log error, skip this group only\n(rest of the flush is unaffected)"]
     P -->|yes| Q{"backend implements Notifier?"}
     Q -->|yes| R["backend.Notify(recipient, refs[key], n)\nstore whatever ref comes back, even if changed"]
-    Q -->|no, implements Updater + refs[key] exists| S1["backend.(Updater).Update(recipient, ref, n)\n(same message edited in place)"]
+    Q -->|"no, implements Updater + refs[key] exists"| S1["backend.(Updater).Update(recipient, ref, n)\n(same message edited in place)"]
     Q -->|no, no Updater or no prior ref| S2["backend.Post(recipient, n)\nstore returned ref only if backend implements Updater"]
     R --> S["session.lastFlush = now"]
     S1 --> S
