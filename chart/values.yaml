@@ -112,6 +112,55 @@ slackBackend:
   # content (rendered into a ConfigMap this chart creates) or
   # existingConfigMap (one you manage yourself), mirroring
   # slackBackend.slack.botToken/existingSecret above.
+  #
+  # The template is executed against a notification.Notification{Summary,
+  # Items}, with Sprig functions available; it must define exactly two named
+  # blocks, "text" (the message's top-level Slack text) and "attachments"
+  # (raw JSON for the "attachments" array).
+  #
+  # Example 1 — simple, same look for every item:
+  #   messageTemplate:
+  #     content: |
+  #       {{define "text"}}{{.Summary}}{{end}}
+  #       {{define "attachments"}}
+  #       [
+  #       {{range $i, $item := .Items}}{{if $i}},{{end}}
+  #         {"color":"#2eb1f2","blocks":[{"type":"section","fields":[
+  #           {"type":"mrkdwn","text":"*App*\n{{$item.AppName}}"},
+  #           {"type":"mrkdwn","text":"*Cluster*\n{{$item.Cluster}}"}
+  #         ]}]}
+  #       {{end}}
+  #       ]
+  #       {{end}}
+  #
+  # Example 2 — different rendering per trigger (branch on $item.Trigger),
+  # collapsing to one summary attachment once there are many apps (a
+  # template sees the whole Items list, so it can decide this itself):
+  #   messageTemplate:
+  #     content: |
+  #       {{define "text"}}{{.Summary}}{{end}}
+  #       {{define "attachments"}}
+  #       {{if gt (len .Items) 8}}
+  #       [{"color":"#2eb1f2","blocks":[{"type":"section","text":{"type":"mrkdwn",
+  #         "text":"{{len .Items}} apps: {{range $i, $item := .Items}}{{if $i}}, {{end}}{{$item.AppName}}{{end}}"}}]}]
+  #       {{else}}
+  #       [
+  #       {{range $i, $item := .Items}}{{if $i}},{{end}}
+  #         {{if eq $item.Trigger "on-deployed"}}
+  #           {"color":"#18be52","blocks":[{"type":"section","fields":[
+  #             {"type":"mrkdwn","text":"*App*\n{{$item.AppName}}"},
+  #             {"type":"mrkdwn","text":"*Commit*\n`{{$item.CommitSHA}}`"}
+  #           ]}]}
+  #         {{else if eq $item.Trigger "on-health-degraded"}}
+  #           {"color":"#f4c030","blocks":[{"type":"section","fields":[
+  #             {"type":"mrkdwn","text":"*App*\n{{$item.AppName}}"},
+  #             {"type":"mrkdwn","text":"*Health*\n:large_yellow_circle: Degraded"}
+  #           ]}]}
+  #         {{end}}
+  #       {{end}}
+  #       ]
+  #       {{end}}
+  #       {{end}}
   messageTemplate:
     content: ""
     existingConfigMap: ""
