@@ -38,6 +38,15 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.LogFormat != "json" {
 		t.Errorf("LogFormat = %q, want json", cfg.LogFormat)
 	}
+	if cfg.MessageTemplatePath != "" {
+		t.Errorf("MessageTemplatePath = %q, want empty (DefaultRenderer)", cfg.MessageTemplatePath)
+	}
+	if cfg.MessageTemplateReloadInterval != 30*time.Second {
+		t.Errorf("MessageTemplateReloadInterval = %v, want 30s", cfg.MessageTemplateReloadInterval)
+	}
+	if cfg.MessageTemplateFallbackToDefault {
+		t.Error("MessageTemplateFallbackToDefault = true, want false")
+	}
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -93,11 +102,13 @@ func TestConfig_Validate(t *testing.T) {
 		{name: "valid", mutate: func(c *Config) {}, wantErr: nil},
 		{name: "zero register interval", mutate: func(c *Config) { c.RegisterInterval = 0 }, wantErr: ErrInvalidRegisterInterval},
 		{name: "negative register interval", mutate: func(c *Config) { c.RegisterInterval = -time.Second }, wantErr: ErrInvalidRegisterInterval},
+		{name: "zero message template reload interval", mutate: func(c *Config) { c.MessageTemplateReloadInterval = 0 }, wantErr: ErrInvalidMessageTemplateReloadInterval},
+		{name: "negative message template reload interval", mutate: func(c *Config) { c.MessageTemplateReloadInterval = -time.Second }, wantErr: ErrInvalidMessageTemplateReloadInterval},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := Config{RegisterInterval: 30 * time.Second}
+			cfg := Config{RegisterInterval: 30 * time.Second, MessageTemplateReloadInterval: 30 * time.Second}
 			tt.mutate(&cfg)
 			err := cfg.Validate()
 			if tt.wantErr == nil {

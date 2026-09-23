@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,5 +85,46 @@ func TestSlackBackendFlow_RegistersAndDeliversViaRemoteBackendAdapter(t *testing
 	calls := waitForCallCount(t, getSlackCalls, 1)
 	if calls[0].path != "/chat.postMessage" || calls[0].channel != "chan1" {
 		t.Fatalf("expected 1 postMessage call to chan1, got %+v", calls)
+	}
+}
+
+// TestSlackBackendFlow_CustomMessageTemplate wires a slack.TemplateWatcher
+// pointed at a temp file the same way cmd/slack-backend/main.go does when
+// MESSAGE_TEMPLATE_PATH is set, and proves the custom template's output —
+// not the built-in DefaultRenderer's — is what actually reaches Slack.
+func TestSlackBackendFlow_CustomMessageTemplate(t *testing.T) {
+	slackBaseURL, getSlackCalls := startMockSlack(t)
+
+	path := filepath.Join(t.TempDir(), "message.tmpl")
+	src := `{{define "text"}}CUSTOM: {{.Summary}}{{end}}{{define "attachments"}}[{"color":"#custom","blocks":[]}]{{end}}`
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatalf("write template: %v", err)
+	}
+
+	watcher := slack.NewTemplateWatcher(path, false, testLogger())
+	watcher.Reload()
+
+	slackClient := slack.NewClient("test-token", 2*time.Second, 1, slack.WithBaseURL(slackBaseURL), slack.WithRenderer(watcher))
+	backendMux := http.NewServeMux()
+	backendapi.HandlerFromMux(slackbackend.NewHandler(slackClient, testLogger()), backendMux)
+	backendServer := httptest.NewServer(backendMux)
+	t.Cleanup(backendServer.Close)
+
+	resp, err := http.Post(backendServer.URL+"/notify", "application/json",
+		strings.NewReader(`{"recipient":"chan1","ref":"","notification":{"summary":"s","items":[{"appName":"a","cluster":"c","trigger":"on-deployed"}]}}`))
+	if err != nil {
+		t.Fatalf("POST /notify: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	calls := waitForCallCount(t, getSlackCalls, 1)
+	if calls[0].text != "CUSTOM: s" {
+		t.Fatalf("text = %q, want the custom template's text", calls[0].text)
+	}
+	if !strings.Contains(calls[0].attachments, "#custom") {
+		t.Fatalf("attachments = %s, want the custom template's attachments", calls[0].attachments)
 	}
 }

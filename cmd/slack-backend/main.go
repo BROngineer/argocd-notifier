@@ -31,7 +31,16 @@ func main() {
 
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat)
 
-	slackClient := slack.NewClient(cfg.SlackBotToken, cfg.SlackRequestTimeout, cfg.SlackMaxRetries)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var clientOpts []slack.Option
+	if cfg.MessageTemplatePath != "" {
+		watcher := slack.NewTemplateWatcher(cfg.MessageTemplatePath, cfg.MessageTemplateFallbackToDefault, logger)
+		go watcher.Run(ctx, cfg.MessageTemplateReloadInterval)
+		clientOpts = append(clientOpts, slack.WithRenderer(watcher))
+	}
+	slackClient := slack.NewClient(cfg.SlackBotToken, cfg.SlackRequestTimeout, cfg.SlackMaxRetries, clientOpts...)
 	handler := slackbackend.NewHandler(slackClient, logger)
 
 	registrar, err := slackbackend.NewRegistrar(
@@ -47,9 +56,6 @@ func main() {
 		logger.Error("failed to build registrar", "error", err)
 		os.Exit(1)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	go registrar.Run(ctx)
 

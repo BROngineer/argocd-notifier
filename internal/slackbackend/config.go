@@ -7,7 +7,10 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-var ErrInvalidRegisterInterval = errors.New("InvalidRegisterInterval")
+var (
+	ErrInvalidRegisterInterval              = errors.New("InvalidRegisterInterval")
+	ErrInvalidMessageTemplateReloadInterval = errors.New("InvalidMessageTemplateReloadInterval")
+)
 
 type Config struct {
 	SlackBotToken       string        `envconfig:"slack_bot_token" required:"true"`
@@ -30,6 +33,19 @@ type Config struct {
 	// between heartbeats.
 	RegisterInterval time.Duration `envconfig:"register_interval" default:"30s"`
 
+	// MessageTemplatePath enables a custom Slack message template (see
+	// internal/slack.TemplateWatcher) when set; empty (the default) keeps
+	// the built-in DefaultRenderer, unchanged.
+	MessageTemplatePath string `envconfig:"message_template_path"`
+	// MessageTemplateReloadInterval is only used when MessageTemplatePath
+	// is set.
+	MessageTemplateReloadInterval time.Duration `envconfig:"message_template_reload_interval" default:"30s"`
+	// MessageTemplateFallbackToDefault: when a loaded template fails to
+	// render a specific notification, true falls back to DefaultRenderer
+	// so the message still gets sent; false (the default) logs and drops
+	// just that notification instead of silently changing its look.
+	MessageTemplateFallbackToDefault bool `envconfig:"message_template_fallback_to_default" default:"false"`
+
 	LogLevel  string `envconfig:"log_level" default:"info"`
 	LogFormat string `envconfig:"log_format" default:"json"`
 }
@@ -48,6 +64,9 @@ func Load() (*Config, error) {
 func (c *Config) Validate() error {
 	if c.RegisterInterval <= 0 {
 		return ErrInvalidRegisterInterval
+	}
+	if c.MessageTemplateReloadInterval <= 0 {
+		return ErrInvalidMessageTemplateReloadInterval
 	}
 	return nil
 }
