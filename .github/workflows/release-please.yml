@@ -85,8 +85,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          HEAD_REF: ${{ fromJSON(steps.release-pr.outputs.pr).headBranchName }}
+          PR_JSON: ${{ steps.release-pr.outputs.pr }}
         run: |
+          HEAD_REF=$(jq -r '.headBranchName' <<< "$PR_JSON")
+
           MAIN_RC_VERSION=$(gh api "repos/$GH_REPO/contents/.release-please-rc-manifest.json?ref=main" --jq '.content' | base64 -d | jq -r '.["."]')
           MAIN_RC_CORE="${MAIN_RC_VERSION%%-*}"
 
