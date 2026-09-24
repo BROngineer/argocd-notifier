@@ -4,11 +4,6 @@ on:
   push:
     branches-ignore:
       - "main"
-    paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
-      - ".golangci.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref }}
