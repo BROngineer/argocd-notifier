@@ -74,4 +74,4 @@ jobs:
           fi
 
           echo "Info: merging PR ${PR_NUMBER}"
-          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          gh pr merge "$PR_NUMBER" --squash --delete-branch --admin
