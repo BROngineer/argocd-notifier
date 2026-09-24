@@ -5,4 +5,4 @@ description: >-
   message per rollout.
 type: application
 version: 0.1.0
-appVersion: 0.7.0-rc.1
+appVersion: 0.7.0-rc.2
