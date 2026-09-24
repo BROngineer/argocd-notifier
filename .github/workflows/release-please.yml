@@ -74,8 +74,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release-pr
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.AUTOMATION_TOKEN }}
           target-branch: main
+
+      - if: ${{ steps.release-pr.outputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_REF: ${{ fromJSON(steps.release-pr.outputs.pr).headBranchName }}
+        run: |
+          MAIN_RC_VERSION=$(gh api "repos/$GH_REPO/contents/.release-please-rc-manifest.json?ref=main" --jq '.content' | base64 -d | jq -r '.["."]')
+          MAIN_RC_CORE="${MAIN_RC_VERSION%%-*}"
+
+          PR_FILE=$(gh api "repos/$GH_REPO/contents/.release-please-rc-manifest.json?ref=$HEAD_REF")
+          PR_RC_VERSION=$(jq -r '.content' <<< "$PR_FILE" | base64 -d | jq -r '.["."]')
+
+          if [[ "$PR_RC_VERSION" == "$MAIN_RC_VERSION" ]]; then
+            echo "Info: rc manifest unchanged in this PR"
+            exit 0
+          fi
+
+          if [[ "$(printf '%s\n%s' "$MAIN_RC_CORE" "$PR_RC_VERSION" | sort -V | tail -n1)" != "$MAIN_RC_CORE" ]]; then
+            echo "Info: rc manifest bump is forward (or equal core), leaving as-is"
+            exit 0
+          fi
+
+          echo "Info: reverting backward rc manifest bump ($PR_RC_VERSION -> keeping $MAIN_RC_VERSION)"
+          FILE_SHA=$(jq -r '.sha' <<< "$PR_FILE")
+          MAIN_CONTENT_B64=$(gh api "repos/$GH_REPO/contents/.release-please-rc-manifest.json?ref=main" --jq '.content')
+
+          gh api --method PUT "repos/$GH_REPO/contents/.release-please-rc-manifest.json" \
+            -f message="chore: keep rc manifest baseline, avoid regressing rc line" \
+            -f content="$MAIN_CONTENT_B64" \
+            -f branch="$HEAD_REF" \
+            -f sha="$FILE_SHA"
