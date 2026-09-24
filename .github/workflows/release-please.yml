@@ -10,7 +10,28 @@ permissions:
   pull-requests: write
 
 jobs:
+  # we'll check whether the merged branch is the release branch
+  # and skip rc creation in this case
+  detect-merge-source:
+    runs-on: ubuntu-latest
+    outputs:
+      create-rc: ${{ steps.check.outputs.create-rc }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          HEAD_REF=$(gh api "repos/${GH_REPO}/commits/${{ github.sha }}/pulls" --jq '.[0].head.ref // empty')
+          if [[ "$HEAD_REF" == "release-please--branches--main--components--release" ]]; then
+            echo "create-rc=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "create-rc=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release-please-rc:
+    needs: detect-merge-source
+    if: fromJSON(needs.detect-merge-source.outputs.create-rc)
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
