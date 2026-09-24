@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.1](https://github.com/BROngineer/argocd-notifier/compare/v0.6.0...v0.6.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* ci workflow concurrency ([#72](https://github.com/BROngineer/argocd-notifier/issues/72)) ([5c9f628](https://github.com/BROngineer/argocd-notifier/commit/5c9f628865d22757cbbd157b491e3b136bb640d3))
+* **ci:** avoid fromJSON crash on empty release pr output ([#70](https://github.com/BROngineer/argocd-notifier/issues/70)) ([9282333](https://github.com/BROngineer/argocd-notifier/commit/9282333d4f2f716e91a4505d7659ca84d9109ecd))
+
+
+### Miscellaneous
+
+* **ci:** split rc release-please into its own workflow ([#74](https://github.com/BROngineer/argocd-notifier/issues/74)) ([a775b01](https://github.com/BROngineer/argocd-notifier/commit/a775b011705f554a74a6cde396ea446f0b155b96))
+* tune release-please and ci workflows ([#66](https://github.com/BROngineer/argocd-notifier/issues/66)) ([9eee7ed](https://github.com/BROngineer/argocd-notifier/commit/9eee7ed7e4c6bc47818b060005cff8c91db15fde))
+* tune release-please job ([#69](https://github.com/BROngineer/argocd-notifier/issues/69)) ([9a2d712](https://github.com/BROngineer/argocd-notifier/commit/9a2d712b92d8cbdf130e7629e239a9e70f0578ef))
+
 ## [0.6.0](https://github.com/BROngineer/argocd-notifier/compare/v0.5.0...v0.6.0) (2026-09-23)
 
 
