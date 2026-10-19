@@ -1,23 +1,28 @@
 # Adding a notification backend
 
-A notification backend is a **separate process, in any language**. It self-registers with argocd-notifier's core over HTTP, then receives pushed notifications over HTTP. There is no Go interface to implement and no PR against this repo required — see `docs/remote-backends.md` for the full design rationale. This doc is the practical how-to; `cmd/slack-backend` (backed by `internal/slackbackend`) is a full reference implementation wrapping `internal/slack`'s rendering/client code behind this same contract — read it alongside this doc if you're writing a Go backend.
+A notification backend is a **separate process. You can write it in any language.** The backend registers itself with the core of argocd-notifier over HTTP. Then it receives pushed notifications over HTTP. You do not implement a Go interface. You do not make a pull request to this repository.
+
+For the design reasons, see `docs/remote-backends.md`. This document is the practical guide.
+
+`cmd/slack-backend` is a full reference implementation. It uses `internal/slackbackend`. It wraps the rendering and client code of `internal/slack` behind the same contract. If you write a backend in Go, read it together with this document.
 
 ## 1. Register, and keep registering (heartbeat)
 
-`POST {core's address}/v1/backends/register` (spec: `api/core/openapi.yaml`):
+Send `POST {core's address}/v1/backends/register`. The specification is in `api/core/openapi.yaml`.
 
 ```json
 { "name": "my-backend", "baseURL": "http://my-backend.svc:8080", "supportsThreadReply": false }
 ```
 
-- `name` is what events route to — an event's `backend` field (set via the `application/backend` Application label, see `docs/setup.md`) must match this exactly.
-- `baseURL` is a base address only — the core appends `/notify` and `/thread-reply` itself. No trailing slash.
-- Call this again with the same `name` to refresh your registration — there's no separate heartbeat endpoint. **You must keep doing this periodically** (well under the core's `BACKEND_REGISTRY_TTL`, default 90s): the registry is in-memory, so a leader failover starts with zero registered backends, and re-registering is how you're noticed again. A one-time registration at startup is not enough.
-- No authentication today — anything that can reach the endpoint can claim any name. Don't expose this beyond a trusted network yet (see `docs/remote-backends.md`'s deferred-items list).
+- `name` is the name that events route to. The `backend` field of an event must match this name exactly. You set the field with the `application/backend` label of the Application (see `docs/setup.md`).
+- `baseURL` is a base address only. The core adds `/notify` and `/thread-reply` itself. Do not add a trailing slash.
+- To refresh your registration, call this endpoint again with the same `name`. There is no separate heartbeat endpoint.
+- **You must call it again at regular intervals.** Use an interval that is much shorter than `BACKEND_REGISTRY_TTL` of the core (default 90s). The registry is in memory. After a leader failover, the new leader has no registered backends. When you register again, the core finds your backend again. One registration at startup is not enough.
+- There is no authentication today. Any process that can reach the endpoint can claim any name. Do not expose the endpoint outside a trusted network. See the list of deferred items in `docs/remote-backends.md`.
 
 ## 2. Serve `/notify`
 
-`POST {your baseURL}/notify` (spec: `api/backendapi/openapi.yaml`):
+Serve `POST {your baseURL}/notify`. The specification is in `api/backendapi/openapi.yaml`.
 
 ```json
 // in
@@ -26,22 +31,35 @@ A notification backend is a **separate process, in any language**. It self-regis
 { "ref": "..." }
 ```
 
-**You decide post-vs-update, not the core.** An empty `ref` means "nothing exists yet — post fresh." A non-empty `ref` means "the core last saw this value — try to edit if you can." Either way, return whatever `ref` now identifies the result; the core stores it verbatim and sends it back on the next call for that same session/recipient. If you can't edit anything, always post fresh and always return a new `ref` — that's a fully supported mode, not a workaround.
+**You decide whether to post or to update. The core does not decide.**
 
-`notification.items[]` fields (`appName`, `cluster`, `trigger` required; `commitURL`/`commitSHA`/`triggeredBy`/`images`/`fields`/`detailText`/`link` optional) are deliberately plain data — no markup, nothing platform-specific. Render them into your own format (Slack's Block Kit, a Discord embed, an email body, whatever).
+- An empty `ref` means that nothing exists yet. Post a new message.
+- A `ref` that is not empty is the value that the core saw last. Edit the message if you can.
+- In both cases, return the `ref` that now identifies the result. The core stores it unchanged. It sends it back on the next call for the same session and recipient.
+- If you cannot edit anything, always post a new message and always return a new `ref`. This mode is fully supported. It is not a workaround.
+
+Some fields in `notification.items[]` are required: `appName`, `cluster` and `trigger`. These fields are optional: `commitURL`, `commitSHA`, `triggeredBy`, `images`, `fields`, `detailText` and `link`. The fields are plain data on purpose. They have no markup and nothing that is specific to a platform. Render them into your own format, for example Slack Block Kit, a Discord embed or an email body.
 
 ## 3. Serve `/thread-reply` (optional)
 
-Only if you set `supportsThreadReply: true` at registration. `POST {your baseURL}/thread-reply`:
+Do this only if you set `supportsThreadReply: true` at registration. Serve `POST {your baseURL}/thread-reply`:
 
 ```json
 { "recipient": "...", "ref": "...", "text": "..." }
 ```
 
-The core only calls this when the operator has `DUPLICATE_ACTION=thread` configured **and** your registration currently declares support — it re-checks your latest registration on every call, so toggling `supportsThreadReply` on a later re-registration takes effect immediately, without restarting the core.
+The core calls this endpoint only when both conditions are true:
+
+- The operator set `DUPLICATE_ACTION=thread`.
+- Your registration declares support at this time.
+
+The core checks your latest registration on every call. If you change `supportsThreadReply` in a later registration, the change takes effect immediately. You do not restart the core.
 
 ## Testing
 
-- Round-trip your `/notify` and `/thread-reply` handlers against `api/backendapi`'s generated request/response shapes (if you're writing Go, `oapi-codegen`'s output in `api/backendapi/backendapi.gen.go` gives you both server and client types for this — see `internal/remotebackend`'s tests for the request/response shapes the core actually sends, and `internal/slackbackend/handler_test.go` for a worked example).
-- Verify registering twice with the same `name` doesn't error (heartbeat) and updates `baseURL`/`supportsThreadReply` if they changed — see `internal/slackbackend/registrar_test.go`.
-- If you support thread replies, verify the core's request reaches you only when you're currently registered with `supportsThreadReply: true`.
+- Test the round trip of your `/notify` and `/thread-reply` handlers. Use the request and response shapes that `api/backendapi` generates.
+  - In Go, the output of `oapi-codegen` in `api/backendapi/backendapi.gen.go` gives you the server types and the client types.
+  - The tests of `internal/remotebackend` show the requests and responses that the core actually sends.
+  - `internal/slackbackend/handler_test.go` is a worked example.
+- Make sure that you can register twice with the same `name` without an error (heartbeat). Make sure that the second registration updates `baseURL` and `supportsThreadReply` if they changed. See `internal/slackbackend/registrar_test.go`.
+- If you support thread replies, make sure that the core sends the request to you only when you are registered with `supportsThreadReply: true`.

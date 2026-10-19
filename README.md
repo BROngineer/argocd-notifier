@@ -4,17 +4,26 @@ ArgoCD notification aggregation service.
 
 ## Problem
 
-ArgoCD's notifications-engine fires one message per `Application`. When an ApplicationSet fans a single service out across many clusters (e.g. one service targeting N clusters, all sharing a label like `application/name: sample`), a single fleet-wide deploy or incident produces one notification per cluster instead of one per rollout.
+The ArgoCD notifications-engine sends one message for each `Application`. An ApplicationSet can deploy one service to many clusters. All these `Application` objects can share a label, for example `application/name: sample`. In this case, one fleet-wide deploy or incident causes one notification for each cluster. You get N messages instead of one message for each rollout.
 
-argocd-notifier's core sits between ArgoCD's notifications-engine and one or more notification backends — separate, self-registering processes that render/deliver to wherever they actually notify (Slack, email, PagerDuty, ...). It receives one webhook call per Application event, groups events sharing a label, and keeps **one live message per rollout**, editing it in place as more events arrive, instead of posting a new one every time.
+argocd-notifier has a core and one or more notification backends. The core sits between the ArgoCD notifications-engine and the backends. A backend is a separate process that registers itself with the core. It renders and delivers the message to the target system, for example Slack, email or PagerDuty.
+
+The core receives one webhook call for each `Application` event. It groups the events that share a label. It keeps **one live message for each rollout** and edits this message in place when more events arrive. It does not post a new message each time.
 
 ## Design
 
-The core debounces bursts of events sharing a label (an idle-reset window plus a hard cap so a rollout's first notification is never delayed indefinitely), keeps one *session* per rollout, and edits that session's message in place as more events arrive instead of posting a new one every time. Delivery is fully decoupled: the core never talks to Slack or anything else directly — a notification backend is a separate process that self-registers with the core over HTTP and receives pushed notifications, and the core only ever routes an event to whichever backend it named. See [docs/design.md](docs/design.md) for the full design (debounce/session mechanics, dedup, high availability) and [docs/remote-backends.md](docs/remote-backends.md) for the registration protocol itself.
+The core debounces bursts of events that share a label. It uses an idle-reset window and a hard cap. The hard cap makes sure that the first notification of a rollout is never delayed without limit.
+
+The core keeps one *session* for each rollout. It edits the message of the session in place when more events arrive.
+
+Delivery is fully decoupled. The core never talks to Slack or to any other target directly. A notification backend is a separate process. It registers itself with the core over HTTP and receives pushed notifications. The core sends an event only to the backend that the event names.
+
+- [docs/design.md](docs/design.md) gives the full design: debounce and session mechanics, deduplication and high availability.
+- [docs/remote-backends.md](docs/remote-backends.md) gives the registration protocol.
 
 ## Notification backends
 
-This project ships one backend out of the box — Slack ([`cmd/slack-backend`](cmd/slack-backend)) — deployable from this same chart as a second workload that self-registers against the core with no manual URL wiring:
+This project includes one backend: Slack ([`cmd/slack-backend`](cmd/slack-backend)). You can deploy it from this chart as a second workload. It registers itself with the core. You do not set a URL by hand.
 
 ```sh
 helm install argocd-notifier ./chart \
@@ -24,31 +33,63 @@ helm install argocd-notifier ./chart \
   --set slackBackend.slack.botToken=xoxb-your-bot-token
 ```
 
-See `slackBackend.*` in [`chart/values.yaml`](chart/values.yaml) for every setting (existing-Secret support, `coreURL`/`publicBaseURL` overrides, etc.), and [docs/setup.md](docs/setup.md) for the full walkthrough including required Slack bot scopes. Its message rendering is customizable too — see [docs/slack-message-templates.md](docs/slack-message-templates.md).
+- Find all settings in the `slackBackend.*` section of [`chart/values.yaml`](chart/values.yaml). Examples are existing-Secret support and the `coreURL` and `publicBaseURL` overrides.
+- For the full procedure, including the required Slack bot scopes, read [docs/setup.md](docs/setup.md).
+- You can change how the backend renders messages. Read [docs/slack-message-templates.md](docs/slack-message-templates.md).
 
-Anything beyond Slack — email, PagerDuty, Teams, a custom webhook — is up to you: the core doesn't ship it and doesn't need to know about it in advance. Implement the self-registration and `/notify` contract described in [docs/adding-a-backend.md](docs/adding-a-backend.md), in any language, run it as your own process, and point it at the core.
+This project does not include other backends, for example email, PagerDuty, Teams or a custom webhook. The core does not need to know about a backend in advance. To add a backend, do these steps:
+
+1. Implement the self-registration and `/notify` contract in [docs/adding-a-backend.md](docs/adding-a-backend.md). You can use any language.
+2. Run the backend as your own process.
+3. Point the backend at the core.
 
 ## Documentation
 
-- [docs/design.md](docs/design.md) — how it works, and why
-- [docs/setup.md](docs/setup.md) — wiring ArgoCD's notifications-engine to argocd-notifier
-- [docs/slack-message-templates.md](docs/slack-message-templates.md) — customizing the Slack backend's message rendering
-- [docs/adding-a-backend.md](docs/adding-a-backend.md) — adding a notification backend
-- [docs/remote-backends.md](docs/remote-backends.md) — the self-registration design
+- [docs/design.md](docs/design.md) - how the service works, and why
+- [docs/setup.md](docs/setup.md) - how to connect the ArgoCD notifications-engine to argocd-notifier
+- [docs/slack-message-templates.md](docs/slack-message-templates.md) - how to customize the message rendering of the Slack backend
+- [docs/adding-a-backend.md](docs/adding-a-backend.md) - how to add a notification backend
+- [docs/remote-backends.md](docs/remote-backends.md) - the self-registration design
 
 ## Configuration
 
-The service is configured entirely via environment variables — see [`chart/values.yaml`](chart/values.yaml) for the full list (server, aggregation, backend registry, logging, leader election, pprof, and the `slackBackend` workload above).
+You configure the service only with environment variables. [`chart/values.yaml`](chart/values.yaml) lists all of them. The groups are server, aggregation, backend registry, logging, leader election, pprof and the `slackBackend` workload.
 
 ## High availability
 
-Running more than 1 replica **requires** leader election (`LEADER_ELECTION_ENABLED=true`) — without it, a k8s `Service` load-balances ArgoCD's webhook calls across replicas, each keeping its own independent in-memory state, which reproduces the exact "many messages instead of one" problem this service exists to solve.
+If you run more than 1 replica, you **must** enable leader election (`LEADER_ELECTION_ENABLED=true`). Without leader election, a Kubernetes `Service` shares the ArgoCD webhook calls between the replicas. Each replica keeps its own in-memory state. This causes the problem that this service exists to solve: many messages instead of one.
 
-This is **failover-speed-plus-no-split-brain only, not state durability**: leader election guarantees exactly one replica is ever active, and failover to a standby is fast (seconds, bounded by `LEASE_DURATION`/`RENEW_DEADLINE`) — but the new leader still starts with empty in-memory session state and zero registered backends, same as a single-replica restart. Making session state (and thus in-flight message refs) survive a leader change would need externalized state (e.g. Redis) — deliberately out of scope for now. Backends re-registering periodically (heartbeat) is what lets them get noticed by a new leader — see [docs/remote-backends.md](docs/remote-backends.md).
+Leader election gives fast failover and prevents split-brain. It does not make the state durable.
 
-Mechanism: each replica runs a `leaderelection.LeaderElector` (`internal/leader`) against a `coordination.k8s.io/v1` `Lease`. `/readyz` is **not** gated on leadership — every replica reports ready unconditionally, so the Deployment rollout completes normally and the k8s Service load-balances across all of them, same as without leader election. What changes is what happens once a request lands: the leader handles it locally; a non-leader forwards it to the current leader (`internal/leaderproxy`, a reverse proxy) rather than processing it itself, since the in-memory session/registry state that matters only exists on the leader. The leader's address is resolved via a `Pods.Get` call against the Kubernetes API (`internal/leader.PodAddressResolver`, cached until the leader changes) — a DNS-based approach (per-pod hostnames via a headless Service) was tried first and reverted: a Deployment can't give each replica a unique, stable hostname the way a StatefulSet can, so per-pod DNS records never actually got created. In the brief window right after a failover where no leader is known yet, a non-leader returns `503` for that request specifically — not a readiness change, and ArgoCD's webhook already retries on 5xx.
+- Leader election makes sure that only one replica is active.
+- Failover to a standby replica takes seconds. `LEASE_DURATION` and `RENEW_DEADLINE` set the limit.
+- The new leader starts with empty in-memory session state and no registered backends. A restart of a single replica gives the same result.
+- To keep session state (and the references to messages in progress) after a leader change, the service needs external state, for example Redis. This is deliberately out of scope for now.
+- A backend registers again at regular intervals (heartbeat). A new leader finds the backend through this heartbeat. See [docs/remote-backends.md](docs/remote-backends.md).
 
-Requires RBAC for `Lease` objects in `LEADER_ELECTION_NAMESPACE`, plus read-only `Pods.Get` in the pods' own namespace (`Release.Namespace` — not necessarily the same as `LEADER_ELECTION_NAMESPACE`, which is why these are separate Role/RoleBinding pairs):
+### Mechanism
+
+Each replica runs a `leaderelection.LeaderElector` (`internal/leader`) against a `coordination.k8s.io/v1` `Lease`.
+
+`/readyz` does not depend on leadership. Every replica always reports ready. The Deployment rollout completes normally, and the Kubernetes `Service` shares requests between all replicas, as it does without leader election.
+
+When a request arrives, the replica does one of these actions:
+
+- The leader processes the request locally.
+- A non-leader forwards the request to the current leader through a reverse proxy (`internal/leaderproxy`). The in-memory session and registry state exists only on the leader.
+
+The service finds the address of the leader with a `Pods.Get` call to the Kubernetes API (`internal/leader.PodAddressResolver`). It caches the address until the leader changes.
+
+We first used DNS with per-pod hostnames through a headless Service. We reverted this change. A Deployment cannot give each replica a unique and stable hostname, but a StatefulSet can. The per-pod DNS records were never created.
+
+Directly after a failover, no leader can be known for a short time. In this window, a non-leader returns `503` for the request. This is not a readiness change. The ArgoCD webhook already retries on 5xx.
+
+### RBAC
+
+Leader election needs these permissions:
+
+- `Lease` objects in `LEADER_ELECTION_NAMESPACE`.
+- Read-only `Pods.Get` in the namespace of the pods (`Release.Namespace`). This namespace can differ from `LEADER_ELECTION_NAMESPACE`. For this reason, the two permissions use separate Role and RoleBinding pairs.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
