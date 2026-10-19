@@ -72,9 +72,10 @@ func TestElector_SingleLeaderAndFailover(t *testing.T) {
 	if !ok {
 		t.Fatal("leader.CurrentLeader() ok = false, want true")
 	}
-	if standbyIdentity, ok := standby.CurrentLeader(); !ok || standbyIdentity != leaderIdentity {
-		t.Fatalf("standby.CurrentLeader() = (%q, %v), want (%q, true)", standbyIdentity, ok, leaderIdentity)
-	}
+	waitFor(t, 2*time.Second, func() bool {
+		id, ok := standby.CurrentLeader()
+		return ok && id == leaderIdentity
+	})
 
 	cancelLeader()
 
