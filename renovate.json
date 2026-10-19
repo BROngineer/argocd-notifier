@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "mise": {
+    "managerFilePatterns": [
+      "/(^|/)\\.mise/conf\\.d/[^/]+\\.toml$/",
+      "/(^|/)mise\\.toml$/"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Keep Go version in sync across mise, go.mod and Dockerfile",
+      "matchDepNames": [
+        "go",
+        "golang"
+      ],
+      "matchManagers": [
+        "mise",
+        "gomod",
+        "dockerfile"
+      ],
+      "groupName": "go toolchain"
+    },
+    {
+      "description": "Look up the module path, the go: alias points at a cmd subpackage the Go proxy does not serve",
+      "matchManagers": [
+        "mise"
+      ],
+      "matchDepNames": [
+        "oapi-codegen"
+      ],
+      "overridePackageName": "github.com/oapi-codegen/oapi-codegen/v2"
+    }
+  ]
+}
