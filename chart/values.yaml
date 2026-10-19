@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/brongineer/argocd-notifier/aggregation-engine
-  tag: "v0.6.1" # x-release-please-version
+  tag: "v0.6.1@sha256:606fd0a87fb9861cc88666b8b41f5847392cb495badfa6dff730ceb51d07b12a" # x-release-please-version
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
