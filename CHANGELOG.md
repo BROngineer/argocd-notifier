@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.2](https://github.com/BROngineer/argocd-notifier/compare/v0.6.1...v0.6.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **ci:** bump go directive in go.mod via renovate ([#89](https://github.com/BROngineer/argocd-notifier/issues/89)) ([d81fc0a](https://github.com/BROngineer/argocd-notifier/commit/d81fc0a3d62544137e0866534f23e697d81dea71))
+* **ci:** pin only github actions digests in renovate ([#82](https://github.com/BROngineer/argocd-notifier/issues/82)) ([99320f1](https://github.com/BROngineer/argocd-notifier/commit/99320f112e4a8e71592a6e2d3bc900851881b3bf))
+* **deps:** update kubernetes monorepo to v0.37.1 ([#83](https://github.com/BROngineer/argocd-notifier/issues/83)) ([de58cd4](https://github.com/BROngineer/argocd-notifier/commit/de58cd4b6ea130118181f10b1817720e27f966d4))
+* **deps:** update module github.com/getkin/kin-openapi to v0.151.0 ([#85](https://github.com/BROngineer/argocd-notifier/issues/85)) ([4813645](https://github.com/BROngineer/argocd-notifier/commit/48136457dcd2cce5dca150ae9a0bf50c93d7e0d7))
+* **leader:** wait for standby to observe leader in test ([#87](https://github.com/BROngineer/argocd-notifier/issues/87)) ([2f7af3b](https://github.com/BROngineer/argocd-notifier/commit/2f7af3b67b40ac961c0ce6076e23d96ab0a294e1))
+
+
+### Miscellaneous
+
+* **ci:** group all github actions updates incl. majors in renovate ([#102](https://github.com/BROngineer/argocd-notifier/issues/102)) ([b4dd743](https://github.com/BROngineer/argocd-notifier/commit/b4dd743359bbdc5f5b5e5c3baf415a750d096bf1))
+* **ci:** group github actions updates in renovate ([#100](https://github.com/BROngineer/argocd-notifier/issues/100)) ([ab65088](https://github.com/BROngineer/argocd-notifier/commit/ab650882bd2f3a39f104670a232049d48236cc5d))
+* **deps:** update dependency golangci-lint to v2.15.0 ([#84](https://github.com/BROngineer/argocd-notifier/issues/84)) ([27448b2](https://github.com/BROngineer/argocd-notifier/commit/27448b28abdb98811bebcf2b7a2d6feb1869ceb0))
+* **deps:** update github actions ([#101](https://github.com/BROngineer/argocd-notifier/issues/101)) ([db2440b](https://github.com/BROngineer/argocd-notifier/commit/db2440ba7779f3db9e02d238a0544f2e86ade1bf))
+* **deps:** update github actions (major) ([#103](https://github.com/BROngineer/argocd-notifier/issues/103)) ([5948edc](https://github.com/BROngineer/argocd-notifier/commit/5948edc81a60c90b4f9b497ec46805ee5ba7daa2))
+* **deps:** update go toolchain to v1.27.2 ([#88](https://github.com/BROngineer/argocd-notifier/issues/88)) ([cc633bc](https://github.com/BROngineer/argocd-notifier/commit/cc633bcfa463f570459942c7edf50ff349ba7a6b))
+* **deps:** update jdx/mise-action action to v5 ([#99](https://github.com/BROngineer/argocd-notifier/issues/99)) ([14978a7](https://github.com/BROngineer/argocd-notifier/commit/14978a70fa5cafd2d7b4a63a2008b69557fc2a22))
+* renovate config and workflow ([#77](https://github.com/BROngineer/argocd-notifier/issues/77)) ([5be7691](https://github.com/BROngineer/argocd-notifier/commit/5be7691e18b219117f177a99924c49505ad2386b))
+
 ## [0.6.1](https://github.com/BROngineer/argocd-notifier/compare/v0.6.0...v0.6.1) (2026-09-24)
 
 
