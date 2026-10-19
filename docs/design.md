@@ -1,59 +1,100 @@
 # Design
 
-How argocd-notifier works, and why it's built the way it is.
+This document explains how argocd-notifier works and why we built it this way.
 
 ## Problem
 
-ArgoCD's notifications-engine fires one message per `Application`. When an ApplicationSet fans a single service out across many clusters — one service targeting N clusters, all sharing a label like `application/name: sample` — a single fleet-wide deploy or incident produces one notification per cluster instead of one per rollout. For a service deployed to, say, 18 clusters, that's 18 separate messages for what a human thinks of as one event.
+The ArgoCD notifications-engine sends one message for each `Application`. An ApplicationSet can deploy one service to many clusters. All the `Application` objects share a label, for example `application/name: sample`. In this case, one fleet-wide deploy or incident causes one notification for each cluster. Consider a service that is deployed to 18 clusters. It causes 18 separate messages for what a person thinks of as one event.
 
-argocd-notifier's core sits between ArgoCD's notifications-engine and one or more **notification backends** — separate processes, in any language, that self-register with the core and render/deliver to wherever they actually notify (Slack, email, PagerDuty, ...). The core receives one webhook call per `Application` trigger firing, groups events that share a label, and keeps **one live message per rollout**, editing it in place as more events arrive, instead of posting a new one every time — that debounce/session/dedup logic is the hard, valuable part, and it's entirely backend-agnostic.
+argocd-notifier sits between the ArgoCD notifications-engine and one or more **notification backends**. A backend is a separate process, in any language. It registers itself with the core. It renders the message and delivers it to the target system, for example Slack, email or PagerDuty.
+
+The core receives one webhook call each time a trigger fires for an `Application`. It groups the events that share a label. It keeps **one live message for each rollout** and edits this message in place when more events arrive. It does not post a new message each time.
+
+The debounce, session and deduplication logic is the hard and valuable part. It is fully independent of the backend.
 
 ## Components
 
 | Package | Responsibility |
 |---|---|
-| `internal/event` | The wire contract with ArgoCD — the JSON shape a webhook call decodes into, and validation of the fields the rest of the system depends on. |
-| `internal/receiver` | HTTP handler that decodes/validates/enqueues an event and acks fast (`202`), plus the worker pool draining the queue. |
-| `internal/aggregator` | The debounce engine (`Engine`) that batches events per group, and the session store (`SessionPublisher`) that turns batches into backend posts/updates via a `BackendResolver`. |
-| `internal/notification` | Backend-neutral domain model (`Notification`, `Item`) built from a session's per-app state, plus the `Backend`/`Updater`/`ThreadReplier`/`Notifier` interfaces a resolved backend value is dispatched through. |
-| `internal/registry` | In-memory registration bookkeeping: a backend calls `POST /v1/backends/register` (also its heartbeat) to become routable under its declared name. |
-| `internal/remotebackend` | Adapts a registry entry into something `SessionPublisher` can call — `Notify`/`PostThreadReply` over HTTP, re-checking the registry on every call. See [remote-backends.md](remote-backends.md). |
-| `internal/slack` | Slack rendering/client code (Block Kit, `chat.postMessage`/`chat.update`). Not wired into the core binary — wrapped behind `internal/slackbackend`'s HTTP contract as its own process, `cmd/slack-backend` (see [remote-backends.md](remote-backends.md)'s Phase 5). |
-| `internal/leader` | Leader election for safely running more than one replica (see [High Availability](#high-availability)). |
-| `internal/leaderproxy` | Per-request routing once a leader is elected: handle locally if leading, otherwise reverse-proxy to whoever is (see [High Availability](#high-availability)). |
-| `internal/config` | Environment-variable-driven configuration for all of the above. |
-| `cmd/argocd-notifier` | Wires everything together and runs the HTTP server. |
+| `internal/event` | The wire contract with ArgoCD. It defines the JSON shape that a webhook call decodes into. It checks the fields that the rest of the system needs. |
+| `internal/receiver` | The HTTP handler that decodes, checks and enqueues an event, and sends a fast `202` response. It also has the worker pool that drains the queue. |
+| `internal/aggregator` | The debounce engine (`Engine`) that batches the events of each group. It also has the session store (`SessionPublisher`), which turns batches into backend posts and updates through a `BackendResolver`. |
+| `internal/notification` | The domain model that does not depend on a backend (`Notification`, `Item`). It builds the model from the per-app state of a session. It also defines the interfaces `Backend`, `Updater`, `ThreadReplier` and `Notifier`. The core calls a resolved backend through them. |
+| `internal/registry` | The in-memory record of registrations. A backend calls `POST /v1/backends/register` to become routable under its declared name. This call is also its heartbeat. |
+| `internal/remotebackend` | Adapts a registry entry to something that `SessionPublisher` can call. It sends `Notify` and `PostThreadReply` over HTTP. It checks the registry again on every call. See [remote-backends.md](remote-backends.md). |
+| `internal/slack` | The Slack rendering and client code (Block Kit, `chat.postMessage`, `chat.update`). The core binary does not include it. `internal/slackbackend` wraps it behind its HTTP contract as its own process, `cmd/slack-backend` (see [remote-backends.md](remote-backends.md)). |
+| `internal/leader` | Leader election, to run more than one replica safely (see [High availability](#high-availability)). |
+| `internal/leaderproxy` | Routing of each request after a leader is elected. A leader handles the request locally. A non-leader forwards it through a reverse proxy to the leader (see [High availability](#high-availability)). |
+| `internal/config` | The configuration of all the packages above. It reads environment variables. |
+| `cmd/argocd-notifier` | Connects all the parts and runs the HTTP server. |
 
 ## Why a debounce window, not just batching
 
-An idle-reset timer (`IDLE_WINDOW`) extends every time a new event arrives in the same group; an independent hard cap (`MAX_WAIT`) never extends. Whichever fires first flushes the batch. This paces how often a backend gets hit — it does **not** define how long a rollout's message stays live (that's the session's job, below). Without the hard cap, a group that keeps receiving events in quick succession (e.g. a slow rolling deploy) could delay its first notification indefinitely; without the idle-reset, a burst of near-simultaneous events would get split across multiple debounce windows instead of batching into one.
+The debounce uses two timers:
+
+- **An idle-reset timer (`IDLE_WINDOW`).** It restarts each time a new event arrives in the same group.
+- **A hard cap (`MAX_WAIT`).** It is independent and never restarts.
+
+The timer that fires first flushes the batch. The timers set how often a backend gets a request. They do **not** set how long the message of a rollout stays live. The session does that (see below).
+
+Each timer prevents a different problem:
+
+- Without the hard cap, a group that keeps receiving events in quick succession can delay its first notification without limit. A slow rolling deploy is an example.
+- Without the idle reset, a burst of events that arrive almost at the same time splits across more than one debounce window. They do not batch into one message.
 
 ## Sessions: why messages update in place
 
-A destination's message represents one *session*. By default a session is keyed by `(groupKey, revision)`; with `COMBINE_TRIGGERS=false` it's keyed by `(groupKey, revision, trigger)` instead, so e.g. a deploy-success wave and a health-degraded wave for the same revision never share a message.
+The message of a destination represents one *session*. By default, the key of a session is `(groupKey, revision)`. If you set `COMBINE_TRIGGERS=false`, the key is `(groupKey, revision, trigger)`. In that case, a wave of successful deploys and a wave of degraded health for the same revision never share a message.
 
-Every debounce flush for an existing session asks the resolved backend to edit the same message reference instead of posting a new one (exactly how depends on the backend — see "Rendering and delivery" below). The session keeps a `perApp` map of each app's *latest* known event (last-write-wins), so the message always reflects current reality — not just the delta from the most recent flush. A session expires after `SESSION_TTL` of inactivity; a later event for the same revision then starts a fresh message rather than editing one that has scrolled far out of view.
+Each debounce flush for an existing session asks the resolved backend to edit the same message reference. It does not ask for a new post. How the backend does this depends on the backend (see "Rendering and delivery" below).
+
+The session keeps a `perApp` map. It holds the *latest* known event of each app (last write wins). For this reason, the message always shows the current state. It does not show only the change since the last flush.
+
+A session expires after `SESSION_TTL` without activity. A later event for the same revision then starts a new message. It does not edit a message that is far out of view.
 
 ## Duplicate events: no standalone dedup cache
 
-ArgoCD's webhook delivery is at-least-once, and the payload carries no send-id — so a network retry of the exact same underlying event is structurally indistinguishable from a genuine recurrence of identical status (e.g. the same app reporting "Degraded" twice, days apart). Two things make this tractable without a separate dedup cache:
+ArgoCD delivers webhooks at least once. The payload has no send ID. For this reason, you cannot distinguish the network retry of an event from a real recurrence of the same status. An example of a real recurrence is an app that reports "Degraded" twice, days apart.
 
-1. **Retries landing in the same debounce window are already harmless.** They merge into the same `perApp` entry (last-write-wins, identical values) and the batch still produces exactly one render/post per flush.
-2. **For anything landing in a later window**, the session compares the incoming event's content hash (`trigger|revision|syncPhase|healthStatus|operationMessage`) against the app's last recorded entry. A real change (even a same-trigger status refinement, e.g. `Error` → `Failed`) always updates the main message. Identical content is handled per the configurable `DUPLICATE_ACTION`:
-   - `"drop"` (default) — no-op, matches naive dedup, zero extra backend calls.
-   - `"thread"` — a short plain-text reply under the session's message (if the resolved backend currently declares `supportsThreadReply`), main message untouched.
+Two facts make this manageable without a separate dedup cache:
 
-   Since a thread reply is truthful either way (a retry and a genuine recurrence both mean "this is still/again true"), treating an ambiguous case as a real recurrence costs little — there's no need to guess correctly.
+1. **Retries in the same debounce window are harmless.** They merge into the same `perApp` entry (last write wins, identical values). The batch still produces exactly one render and one post for each flush.
+2. **For an event in a later window**, the session compares the content hash of the new event with the last recorded entry of the app. The hash covers `trigger|revision|syncPhase|healthStatus|operationMessage`.
+   - A real change always updates the main message. A refinement of the status with the same trigger is a real change, for example `Error` to `Failed`.
+   - The setting `DUPLICATE_ACTION` controls identical content:
+     - `"drop"` (default): The session does nothing. This matches a naive dedup. It makes no extra backend calls.
+     - `"thread"`: The session sends a short plain-text reply under the message of the session. It does this only if the resolved backend currently declares `supportsThreadReply`. The main message does not change.
+
+A thread reply is truthful in both cases. A retry and a real recurrence both mean "this is still true" or "this is true again". If the session treats an unclear case as a real recurrence, the cost is low. You do not need to guess correctly.
 
 ## Rendering and delivery
 
-`notification.Build` sorts apps by name for deterministic output and builds one backend-neutral `Item` per app via a per-trigger builder — matching each of ArgoCD's built-in triggers (`on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`). An event whose trigger isn't recognized is skipped from the item list but still counted in the notification's summary line. `Item` carries structured fields (`CommitURL`/`CommitSHA`, `TriggeredBy`, `Images`, a generic `Fields` list) rather than any backend's markup — turning that into an actual message is each backend's own job, done entirely outside this process (see [remote-backends.md](remote-backends.md)).
+`notification.Build` sorts the apps by name to get a deterministic output. It builds one `Item` for each app. The `Item` does not depend on a backend. A builder for each trigger makes it. There is one builder for each built-in ArgoCD trigger: `on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown` and `on-sync-succeeded`.
 
-The aggregator never talks to a backend's real API directly — every backend is a separate process, self-registered against `internal/registry` and reached over HTTP via `internal/remotebackend` (`POST /notify`, `POST /thread-reply`). ArgoCD calls argocd-notifier's core through a `service.webhook.<name>` notifier (see [setup.md](setup.md) for the ArgoCD-side wiring); the core in turn calls whichever backend an event's `backend` field names. The existing per-app channel/recipient list is reused verbatim: the subscribe-annotation's recipient value carries straight through as `.recipient` in the webhook body, so there's no new per-app config surface on the ArgoCD side beyond the `application/backend` label (see [setup.md](setup.md)).
+If the trigger of an event is not known, `Build` leaves the event out of the item list. It still counts the event in the summary line of the notification.
 
-Recipient is a **per-app** routing decision (really per-trigger, since it comes from each Application's own subscribe annotations), not "who to CC on one shared message." A session's apps are grouped by their own latest event's `(backend, recipient)` pair *before* rendering, so a service that fans out to many clusters can legitimately route different subsets to different destinations — even different backends — within the same session, e.g. dev clusters' sync events to one Slack channel, prod clusters' sync events to another, and a separate backend entirely for paging on health-degraded. Each `(backend, recipient)` pair gets its own notification built from only the apps actually addressed to it, and its own independently-tracked message reference — two different backends sharing a recipient string never collide, and neither sees the other's apps, even though they all belong to the same `(groupKey, revision)` session. An app whose event names multiple recipients (semicolon-joined) still fans out to all of them with the same content.
+An `Item` holds structured fields: `CommitURL`, `CommitSHA`, `TriggeredBy`, `Images` and a generic `Fields` list. It does not hold the markup of any backend. Each backend turns the fields into a message. It does this fully outside this process (see [remote-backends.md](remote-backends.md)).
 
-A resolved backend either implements `notification.Notifier` (decides post-vs-update itself, returns whatever ref represents the result — the shape every remote backend uses) or the older `Backend`/`Updater`/`ThreadReplier` trio (`Post` required, `Updater`/`ThreadReplier` optional, checked via type assertion) kept for the interfaces' own sake. If an event names a backend that isn't currently resolvable — never registered, or gone stale — only that `(backend, recipient)` group fails for the current flush; it's logged and the rest of the session is unaffected. See [adding-a-backend.md](adding-a-backend.md) for how to add a backend.
+The aggregator never talks to the real API of a backend. Every backend is a separate process. It registers itself in `internal/registry`. The core reaches it over HTTP through `internal/remotebackend` (`POST /notify` and `POST /thread-reply`).
+
+ArgoCD calls the core of argocd-notifier through a `service.webhook.<name>` notifier (see [setup.md](setup.md) for the ArgoCD side). The core then calls the backend that the `backend` field of the event names.
+
+The core reuses the existing list of channels or recipients of each app unchanged. The value of the subscribe annotation passes through as `.recipient` in the webhook body. For this reason, the ArgoCD side has no new configuration for each app, except the `application/backend` label (see [setup.md](setup.md)).
+
+Recipient is a routing decision for **each app**. It is really a decision for each trigger, because it comes from the subscribe annotations of each Application. It does not mean "who is copied on one shared message".
+
+- Before rendering, the session groups the apps by the `(backend, recipient)` pair of the latest event of each app.
+- A service that deploys to many clusters can route different subsets of apps to different destinations in the same session. It can even use different backends. For example, the sync events of dev clusters go to one Slack channel. The sync events of prod clusters go to another channel. A separate backend sends pages for health-degraded events.
+- Each `(backend, recipient)` pair gets its own notification. The notification has only the apps that are addressed to this pair. The pair also has its own message reference, which the session tracks independently.
+- Two backends that share a recipient string never collide. Neither sees the apps of the other, although they belong to the same `(groupKey, revision)` session.
+- An event can name more than one recipient, joined with semicolons. The app then goes to all of them with the same content.
+
+A resolved backend does one of two things:
+
+- It implements `notification.Notifier`. It decides itself whether to post or to update, and it returns the ref that represents the result. Every remote backend works this way.
+- It implements the older trio `Backend`, `Updater` and `ThreadReplier`. `Post` is required. `Updater` and `ThreadReplier` are optional, and the core checks them with a type assertion. We keep the trio for the interfaces themselves.
+
+If an event names a backend that cannot be resolved now, only that `(backend, recipient)` group fails for the current flush. The backend was never registered, or its registration is stale. The core logs the failure. The rest of the session is not affected. See [adding-a-backend.md](adding-a-backend.md) to add a backend.
 
 ## Flow
 
@@ -95,18 +136,41 @@ flowchart TD
 
 ## High availability
 
-Running more than one replica requires leader election (`LEADER_ELECTION_ENABLED=true`). Without it, a Kubernetes `Service` load-balances ArgoCD's webhook calls across replicas, each keeping independent in-memory state — which reproduces the exact "many messages instead of one" problem this service exists to solve.
+If you run more than one replica, you must enable leader election (`LEADER_ELECTION_ENABLED=true`). Without it, a Kubernetes `Service` shares the ArgoCD webhook calls between the replicas. Each replica keeps independent in-memory state. This causes the problem that this service exists to solve: many messages instead of one.
 
-This buys **failover speed and no split-brain, not state durability**: exactly one replica is ever active (`internal/leader.Elector` campaigns for a `coordination.k8s.io/v1` `Lease`). `/readyz` is intentionally *not* gated on leadership — every replica reports ready and stays a normal Service endpoint (gating it on `IsLeader` was tried and reverted: with N replicas, N-1 permanently non-Ready pods mean the Deployment's rollout can never report "available," it sits `Progressing` forever). Instead, `internal/leaderproxy.Handler` decides per-request: the leader handles it locally, a non-leader reverse-proxies it to whoever currently holds the lease, addressed via `internal/leader.PodAddressResolver` (a `Pods.Get` call against the Kubernetes API, cached until the leader changes — needs read-only RBAC on `pods`; a DNS-based approach was tried first and reverted, since a Deployment can't give each replica the unique, stable hostname per-pod DNS records need — only a StatefulSet auto-assigns that). In the short window right after a failover where no leader is known yet, a non-leader returns `503` for that one request — logged and retried by ArgoCD's webhook client like any other 5xx, not a probe/rollout concern. The new leader still starts with empty in-memory session state, same as a plain restart; making session state (and in-flight message refs) survive a leader change would need externalized state (e.g. Redis), which is deliberately out of scope. This also means a new leader starts with zero registered backends — see [remote-backends.md](remote-backends.md)'s heartbeat section for why backends must keep re-registering, not just register once. See [README.md](../README.md#high-availability) for the required RBAC.
+Leader election gives **fast failover and no split-brain. It does not make the state durable.** Exactly one replica is active at any time. `internal/leader.Elector` competes for a `coordination.k8s.io/v1` `Lease`.
+
+**Readiness does not depend on leadership.**
+- `/readyz` is intentionally *not* gated on leadership. Every replica reports ready and stays a normal Service endpoint.
+- We tried to gate it on `IsLeader` and reverted this change. With N replicas, N-1 pods are never Ready. The rollout of the Deployment can then never report "available". It stays in `Progressing` without end.
+
+**Routing depends on the request.** `internal/leaderproxy.Handler` decides for each request:
+- The leader handles the request locally.
+- A non-leader forwards the request through a reverse proxy to the replica that holds the lease.
+
+**Finding the leader.**
+- `internal/leader.PodAddressResolver` finds the address of the leader. It makes a `Pods.Get` call to the Kubernetes API. It caches the address until the leader changes. It needs read-only RBAC on `pods`.
+- We first tried a DNS approach and reverted it. Per-pod DNS records need a unique and stable hostname for each replica. A Deployment cannot give this. Only a StatefulSet assigns it automatically.
+
+**Failover window.** Directly after a failover, no leader can be known for a short time. In this window, a non-leader returns `503` for that one request. The webhook client of ArgoCD logs it and retries it, as it does for any 5xx. This is not a probe or rollout problem.
+
+**State after a failover.**
+- The new leader starts with empty in-memory session state, as after a normal restart.
+- To keep the session state after a leader change, the service needs external state, for example Redis. The state includes the message refs that are in progress. This is deliberately out of scope.
+- The new leader also starts with no registered backends. Backends must register again at regular intervals. One registration is not enough. See the heartbeat section of [remote-backends.md](remote-backends.md).
+
+For the required RBAC, see [README.md](../README.md#high-availability).
 
 ## Debugging
 
-`net/http/pprof` is served on its own listener (`PPROF_ADDR`, default `:6060`) when `PPROF_ENABLED=true`, registered on a dedicated mux rather than `http.DefaultServeMux` — kept deliberately separate from the main server so it's never reachable through whatever routes ArgoCD's webhook traffic or readiness checks in. See [setup.md](setup.md) for `port-forward`/`go tool pprof` usage.
+When `PPROF_ENABLED=true`, `net/http/pprof` runs on its own listener (`PPROF_ADDR`, default `:6060`). It is registered on a dedicated mux, not on `http.DefaultServeMux`. It is deliberately separate from the main server. For this reason, no route that carries ArgoCD webhook traffic or readiness checks can reach it. For the `port-forward` and `go tool pprof` commands, see [setup.md](setup.md).
 
 ## Known limitations (accepted, not accidental)
 
-- **In-memory state, no persistence.** A pod restart mid-rollout loses the session→message mapping; the next event for that revision posts a new message instead of editing the old one. Accepted as a rare-case tradeoff — restarts should be infrequent, and root causes (e.g. OOMs) should be fixed rather than papered over with dedup machinery.
-- **No fan-out-count awareness.** A message can say "3 apps degraded" but not "3 of 20" — ArgoCD's notification payload carries no information about how many other Applications share a label, so that would require a separate watch/informer against the Application CRD. Deferred.
-- **`cmd/slack-backend` is the only backend that ships today.** It wraps `internal/slack`'s rendering/client code behind `internal/slackbackend`'s HTTP contract, self-registering as its own process — see [remote-backends.md](remote-backends.md)'s Phase 5. An event whose `backend` never registers (wrong name, or that backend down) simply fails that `(backend, recipient)` group every flush (logged, not fatal). Running more than one replica of `cmd/slack-backend` doesn't give real HA yet — see the Phase 5 note in [remote-backends.md](remote-backends.md).
-- **No fan-out to multiple backends per event.** An event routes to exactly one backend by name; running several backends means different events go to different single destinations, not the same notification broadcast everywhere.
-- **100-attachment cap is a hardcoded default in `internal/slack`, not yet configurable.** Slack doesn't publish an exact byte-size threshold to defend against separately — revisit if/when a single rollout's app count grows enough for it to matter.
+- **In-memory state, no persistence.** A pod restart during a rollout loses the mapping from session to message. The next event for that revision posts a new message. It does not edit the old message. We accept this as a trade-off for a rare case. Restarts must be rare. We must fix their root causes, for example OOM kills. We must not hide them with dedup machinery.
+- **No awareness of the fan-out count.** A message can say "3 apps degraded". It cannot say "3 of 20". The notification payload of ArgoCD has no information about how many other Applications share a label. To get it, the service needs a separate watch or informer on the Application CRD. This is deferred.
+- **`cmd/slack-backend` is the only backend that ships today.** It wraps the rendering and client code of `internal/slack` behind the HTTP contract of `internal/slackbackend`. It registers itself as its own process.
+  - If the `backend` of an event never registers (wrong name or backend down), the `(backend, recipient)` group fails on every flush. The core logs it. It is not fatal.
+  - If you run more than one replica of `cmd/slack-backend`, you do not yet get real HA.
+- **No fan-out to multiple backends for each event.** An event routes to exactly one backend, by name. If you run several backends, different events go to different single destinations. The same notification is not broadcast to all of them.
+- **The limit of 100 attachments is a hardcoded default in `internal/slack`.** You cannot configure it yet. Slack does not publish an exact threshold in bytes that we could guard against separately. Revisit this if the number of apps in one rollout grows enough to matter.
