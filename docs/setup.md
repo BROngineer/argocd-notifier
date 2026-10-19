@@ -1,12 +1,16 @@
 # Setup
 
-How to wire ArgoCD's notifications-engine to argocd-notifier and have it aggregate real notifications. See [design.md](design.md) for how the service behaves once wired up.
+This document explains how to connect the ArgoCD notifications-engine to argocd-notifier. After you do this, argocd-notifier aggregates real notifications. For the behavior of the service after setup, see [design.md](design.md).
 
-There are three pieces: deploy argocd-notifier, add it as a webhook notification service in ArgoCD, then subscribe your Applications to it.
+Setup has three parts:
+
+1. Deploy argocd-notifier.
+2. Add argocd-notifier as a webhook notification service in ArgoCD.
+3. Subscribe your Applications to the service.
 
 ## 1. Deploy argocd-notifier
 
-Using the chart at [`chart/`](../chart):
+Use the chart in [`chart/`](../chart):
 
 ```sh
 helm install argocd-notifier ./chart \
@@ -14,11 +18,13 @@ helm install argocd-notifier ./chart \
   --set aggregation.groupLabel=application/name  # must match a real label on your Applications — see step 3
 ```
 
-See [`chart/values.yaml`](../chart/values.yaml) for every setting. Multi-replica setups need `--set leaderElection.enabled=true` — the chart renders the RBAC `Role`/`RoleBinding` this requires automatically; see [design.md#high-availability](design.md#high-availability) before doing that (skip it for a single replica).
+See [`chart/values.yaml`](../chart/values.yaml) for all settings.
 
-This deploys the core only — the part that receives, debounces, and routes events. It doesn't talk to Slack or anything else directly: notifications only actually go anywhere once at least one backend process self-registers against it. See [`adding-a-backend.md`](adding-a-backend.md) for the registration contract, and [`remote-backends.md`](remote-backends.md) for the design behind it.
+For more than one replica, add `--set leaderElection.enabled=true`. The chart renders the necessary RBAC `Role` and `RoleBinding` automatically. Read [design.md#high-availability](design.md#high-availability) first. Do not enable leader election for a single replica.
 
-For Slack specifically, this same chart also deploys the reference [`cmd/slack-backend`](../cmd/slack-backend) as a second workload in the same release — enable it and it self-registers against the core Service this release already creates, no manual URL wiring needed:
+This command deploys the core only. The core receives, debounces and routes events. It does not talk to Slack or to any other target directly. The core sends notifications only after at least one backend process registers itself with the core. For the registration contract, see [`adding-a-backend.md`](adding-a-backend.md). For the design behind it, see [`remote-backends.md`](remote-backends.md).
+
+For Slack, the same chart can also deploy the reference backend [`cmd/slack-backend`](../cmd/slack-backend). It runs as a second workload in the same release. When you enable it, it registers itself with the core Service that this release creates. You do not set a URL by hand:
 
 ```sh
 helm install argocd-notifier ./chart \
@@ -28,9 +34,13 @@ helm install argocd-notifier ./chart \
   --set slackBackend.slack.botToken=xoxb-your-bot-token
 ```
 
-Prefer an existing Secret you manage yourself (sealed-secrets, external-secrets) over `slackBackend.slack.botToken` in production: `--set slackBackend.slack.existingSecret=my-slack-secret`. The Slack bot token needs the `chat:write` scope, and the bot must be invited to every channel you intend to notify (`/invite @your-bot`) or `chat.postMessage`/`chat.update` will fail with `not_in_channel`. See `slackBackend.*` in [`chart/values.yaml`](../chart/values.yaml) for every setting, including `coreURL`/`publicBaseURL` overrides for pointing this backend at a core deployed outside this release.
+In production, use an existing Secret that you manage yourself (for example with sealed-secrets or external-secrets). Do not use `slackBackend.slack.botToken`. To use an existing Secret, set `--set slackBackend.slack.existingSecret=my-slack-secret`.
 
-To profile a running instance, set `--set pprof.enabled=true` (its own container port, deliberately not exposed via the Service), then:
+The Slack bot token needs the `chat:write` scope. Invite the bot to every channel that you want to notify (`/invite @your-bot`). If you do not, `chat.postMessage` and `chat.update` fail with `not_in_channel`.
+
+See `slackBackend.*` in [`chart/values.yaml`](../chart/values.yaml) for all settings. The settings include the `coreURL` and `publicBaseURL` overrides. Use them to point this backend at a core that you deploy outside this release.
+
+To profile a running instance, set `--set pprof.enabled=true`. The profiler uses its own container port. The Service deliberately does not expose this port. Then run:
 
 ```sh
 kubectl port-forward -n argocd deploy/argocd-notifier 6060:6060
@@ -40,7 +50,7 @@ go tool pprof http://localhost:6060/debug/pprof/goroutine
 
 ## 2. Add argocd-notifier as a webhook service in ArgoCD
 
-Edit `argocd-notifications-cm` (the ConfigMap ArgoCD's notifications-engine reads):
+Edit `argocd-notifications-cm`. This is the ConfigMap that the ArgoCD notifications-engine reads:
 
 ```yaml
 apiVersion: v1
@@ -56,9 +66,11 @@ data:
     url: http://argocd-notifier.argocd.svc.cluster.local:8080
 ```
 
-The `url` is the base address; argocd-notifier's HTTP path is fixed at `/events` (see `api/core/openapi.yaml`) and set per-template below.
+The `url` is the base address. The HTTP path of argocd-notifier is always `/events` (see `api/core/openapi.yaml`). You set the path in each template (see below).
 
-Now add (or edit) the templates for whichever triggers you want aggregated. If you already have ArgoCD's default notification catalog loaded, these template *names* likely already exist (feeding the default `slack:` key) — you're adding a `webhook:` key to the same template, not replacing the trigger definitions. Three representative examples (the same fields argocd-notifier's `render` package already knows how to draw for every one of ArgoCD's 8 built-in triggers — `on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`):
+Next, add or edit the templates for the triggers that you want to aggregate. If you already loaded the default notification catalog of ArgoCD, these template *names* likely exist already. They feed the default `slack:` key. You add a `webhook:` key to the same template. You do not replace the trigger definitions.
+
+The examples below show three templates. The Slack backend renderer (`internal/slack/render.go`) can draw the same fields for all 8 built-in ArgoCD triggers. The triggers are `on-created`, `on-deleted`, `on-deployed`, `on-health-degraded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown` and `on-sync-succeeded`.
 
 ```yaml
   template.app-deployed: |
@@ -134,18 +146,18 @@ Now add (or edit) the templates for whichever triggers you want aggregated. If y
           }
 ```
 
-Notes on this template shape:
+Notes on the template shape:
 
-- **`"trigger"` is a literal string per template**, not derived — each ArgoCD template name maps to exactly one trigger condition, so there's no need (and no clean way) to compute it dynamically from `.app`.
-- **`{{.recipient}}`** carries the subscribe annotation's value straight through — this is how the aggregator knows which Slack channel(s) to post to, reusing whatever channel config you already have (see step 3).
-- **`application/name`** is just an example label key — replace it with whatever label you actually use to group an app across clusters/environments, and set argocd-notifier's `GROUP_LABEL` to the same key.
-- **`"backend"`** has no fallback — argocd-notifier rejects an event with no `backend` value (`ErrMissingBackend`), so every Application must carry the `application/backend` label (e.g. `slack`, or a separately registered remote backend — see `docs/remote-backends.md`).
-- To wire up the remaining 5 triggers (`on-created`, `on-deleted`, `on-sync-running`, `on-sync-status-unknown`, `on-sync-succeeded`), repeat this pattern against `template.app-created`, `template.app-deleted`, etc. (or whatever your catalog names them), changing only the `"trigger"` literal and dropping fields that don't apply (e.g. `on-deleted` has no useful health/sync status).
-- If you don't already have `trigger.on-*` definitions (no default catalog loaded), you also need those — see [ArgoCD's notification triggers docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/triggers/) for the conditions; argocd-notifier doesn't care what condition fired a trigger, only its name and the fields in the body above.
+- **`"trigger"` is a literal string in each template.** It is not derived. Each ArgoCD template name maps to exactly one trigger condition. You do not need to compute it from `.app`, and no clean way to do it exists.
+- **`{{.recipient}}` carries the value of the subscribe annotation unchanged.** The aggregator uses it to find the Slack channels to post to. It reuses the channel configuration that you already have (see step 3).
+- **`application/name` is only an example label key.** Replace it with the label that you use to group an app across clusters or environments. Set the `GROUP_LABEL` of argocd-notifier to the same key.
+- **`"backend"` has no fallback.** argocd-notifier rejects an event that has no `backend` value (`ErrMissingBackend`). Each Application must have the `application/backend` label. The value is `slack` or the name of a separately registered remote backend (see `docs/remote-backends.md`).
+- To connect the 5 remaining triggers, repeat this pattern. The triggers are `on-created`, `on-deleted`, `on-sync-running`, `on-sync-status-unknown` and `on-sync-succeeded`. Use `template.app-created`, `template.app-deleted` and so on, or the names in your catalog. Change only the `"trigger"` literal. Remove the fields that do not apply. For example, `on-deleted` has no useful health or sync status.
+- If you did not load a default catalog, you also need the `trigger.on-*` definitions. For the conditions, see [the ArgoCD notification triggers documentation](https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/triggers/). argocd-notifier does not use the condition that fired a trigger. It uses only the trigger name and the fields in the body above.
 
 ## 3. Subscribe your Applications
 
-Label every Application you want grouped together with the label named in `GROUP_LABEL`, and add a subscribe annotation per trigger, per webhook service name (`argocd-notifier` in the examples above):
+Give each Application that you want to group the label that `GROUP_LABEL` names. Then add one subscribe annotation for each trigger and for each webhook service name. In the examples above, the service name is `argocd-notifier`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -163,13 +175,19 @@ spec:
   # ...
 ```
 
-The annotation value is semicolon-joined Slack channel name(s) — exactly the same format/mechanism ArgoCD's built-in `slack` service already uses, just addressed at `argocd-notifier` instead. If you're generating Applications via an `ApplicationSet`, template these labels/annotations the same way you would for the `slack` service today; nothing else about your existing per-app channel config needs to change.
+The annotation value is a list of Slack channel names, separated by semicolons. The built-in `slack` service of ArgoCD uses the same format and the same mechanism. The only change is the address: `argocd-notifier` replaces `slack`.
+
+If you generate Applications with an `ApplicationSet`, add these labels and annotations in the same way as you do for the `slack` service today. The channel configuration of each app stays the same.
 
 ## 4. Verify end-to-end
 
-1. `curl http://<argocd-notifier>:8080/healthz` → `200`.
-2. Trigger a sync (or wait for auto-sync) on a subscribed Application.
-3. Watch the aggregator's logs for `POST /events` handling; if `GROUP_LABEL` or the subscribe annotations are misconfigured, requests will 400 (missing required field — check `groupKey`/`recipient` are actually populated by your template) rather than silently doing nothing.
-4. Confirm exactly one Slack message appears in the target channel, and that a second event for the same app/revision **edits** the same message rather than posting a new one.
+1. Run `curl http://<argocd-notifier>:8080/healthz`. The response must be `200`.
+2. Trigger a sync on a subscribed Application, or wait for the auto-sync.
+3. Read the logs of the aggregator for `POST /events` handling. If `GROUP_LABEL` or the subscribe annotations are wrong, the requests fail with `400` (missing required field). Make sure that your template fills `groupKey` and `recipient`. The service does not fail silently.
+4. Make sure that exactly one Slack message appears in the target channel. A second event for the same app and revision must **edit** this message. It must not post a new message.
 
-If running with leader election, `curl http://<pod>:8080/readyz` returns `200` only on the current leader — confirm exactly one pod's `/readyz` is `200` at a time.
+If leader election is on, every replica returns `200` on `/readyz`. To find the leader, look at which pod holds the lease:
+
+```sh
+kubectl get lease argocd-notifier-leader -n argocd -o jsonpath='{.spec.holderIdentity}{"\n"}'
+```
