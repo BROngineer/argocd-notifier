@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.151.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
