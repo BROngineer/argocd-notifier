@@ -51,16 +51,9 @@
       "overridePackageName": "github.com/oapi-codegen/oapi-codegen/v2"
     },
     {
-      "description": "Update all GitHub Actions across all workflows in one PR, majors stay separate",
+      "description": "Update all GitHub Actions across all workflows in one PR",
       "matchManagers": [
         "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest",
-        "pin",
-        "pinDigest"
       ],
       "groupName": "github actions"
     }
