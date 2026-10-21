@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/BROngineer/argocd-notifier/compare/v0.6.2...v0.6.3) (2026-10-21)
+
+
+### Miscellaneous
+
+* **deps:** update go toolchain to v1.27.3 ([#104](https://github.com/BROngineer/argocd-notifier/issues/104)) ([2f98ac3](https://github.com/BROngineer/argocd-notifier/commit/2f98ac3a26d1f0ebb8720dd019541f28874bca2d))
+
 ## [0.6.2](https://github.com/BROngineer/argocd-notifier/compare/v0.6.1...v0.6.2) (2026-10-19)
 
 
