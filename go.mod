@@ -6,9 +6,9 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/getkin/kin-openapi v0.151.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	k8s.io/api v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
+	k8s.io/api v0.37.2
+	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
 )
 
 require (
